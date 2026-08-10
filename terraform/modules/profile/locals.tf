@@ -1,0 +1,547 @@
+################################################################################
+# Environment profiles
+#
+# Three coherent bundles. "Coherent" is the point: zone-redundant compute with
+# a single-zone database is not a cheaper production environment, it is a
+# broken one. Bundling the settings that must move together prevents an
+# environment being assembled from individually reasonable but collectively
+# incoherent choices.
+#
+# VALUES MARKED [FREE-TIER] are sized for an Azure free/trial subscription with
+# the conservative default quota: 4 total regional vCPUs, burstable families
+# only, zero Spot quota. They have NOT been verified against the target
+# subscription. Run:
+#
+#   az vm list-usage --location <region> -o table
+#
+# and pass the result as var.subscription_vcpu_quota to have the module check
+# them for you.
+################################################################################
+
+locals {
+  profiles = {
+    ##########################################################################
+    # dev — free-tier safe.
+    #
+    # The only environment expected to be applied on a trial subscription.
+    # Egress via NAT Gateway rather than Azure Firewall (~$33/month against
+    # ~$912), ingress via a public Standard load balancer rather than
+    # Application Gateway (~$18 against ~$260 minimum), and Bastion Developer,
+    # which carries no charge.
+    ##########################################################################
+    dev = {
+      # Egress. NAT Gateway is not optional decoration: default outbound
+      # access was retired on 30 September 2025, so a subnet with no explicit
+      # egress resource has no internet connectivity at all.
+      enable_firewall    = false
+      firewall_sku_tier  = "Standard"
+      enable_nat_gateway = true
+
+      # Ingress. Application Gateway has no inexpensive tier — Standard_v2
+      # still costs roughly $180/month before capacity units.
+      enable_application_gateway       = false
+      application_gateway_sku          = "Standard_v2"
+      waf_mode                         = "Detection"
+      application_gateway_zones        = []
+      application_gateway_min_capacity = 1
+      application_gateway_max_capacity = 2
+      enable_public_load_balancer      = true
+
+      # Bastion Developer carries no charge. It is portal-only, does not
+      # support the native client, and does not work across peered VNets —
+      # all acceptable for dev, none acceptable for prod.
+      enable_bastion = true
+      bastion_sku    = "Developer"
+
+      # [FREE-TIER] 1 instance per tier x 2 tiers = 2 vCPUs, inside a 4-vCPU
+      # quota with headroom for a rolling upgrade.
+      vm_size                 = "Standard_B1s"
+      instance_count          = 1
+      enable_autoscale        = false
+      autoscale_min_instances = 1
+      autoscale_max_instances = 2
+      compute_zones           = []
+      # Trial subscriptions are allocated zero Spot vCPUs by default, so spot
+      # instances would fail to allocate rather than save money.
+      use_spot_instances = false
+      os_disk_type       = "StandardSSD_LRS"
+      os_disk_size_gb    = 64
+
+      # Serverless SQL with auto-pause bills near zero while idle, which suits
+      # an environment used a few hours a day.
+      sql_sku_name                   = "GP_S_Gen5_1"
+      sql_zone_redundant             = false
+      sql_backup_retention_days      = 7
+      sql_enable_long_term_retention = false
+
+      # Redis has no free tier. Basic C0 is roughly $16/month and is the first
+      # thing to disable if credit runs short.
+      enable_redis   = true
+      redis_sku_name = "Basic"
+      redis_capacity = 0
+
+      storage_replication_type  = "LRS"
+      storage_enable_versioning = false
+
+      # Purge protection is deliberately OFF in dev. Once enabled it CANNOT be
+      # disabled, and a deleted vault name is unusable for the retention
+      # period — which breaks the destroy/recreate cycle that keeps a trial
+      # subscription affordable.
+      key_vault_purge_protection           = false
+      key_vault_soft_delete_retention_days = 7
+
+      # Resource locks would block `terraform destroy`, the primary cost
+      # control on a credit-limited subscription.
+      enable_resource_locks  = false
+      enable_ddos_protection = false
+      enable_defender        = false
+
+      # A daily cap protects the free 5 GB/month Log Analytics allowance.
+      # Note that a cap DROPS data once hit, including security signals —
+      # tolerable in dev, never in production.
+      log_retention_days = 30
+      log_daily_quota_gb = 0.5
+      enable_vm_insights = true
+      enable_alerts      = false
+
+      enable_backup         = false
+      backup_retention_days = 7
+    }
+
+    ##########################################################################
+    # test — pre-production validation.
+    #
+    # Adds the WAF in Detection mode so rule tuning happens here rather than
+    # against production traffic, and partial zone spread so zone-aware
+    # behaviour is exercised. Still no Azure Firewall: at ~$912/month it is
+    # the single largest line item, and its rules can be validated in prod
+    # behind a change window.
+    #
+    # NOT deployable on a free subscription.
+    ##########################################################################
+    test = {
+      enable_firewall    = false
+      firewall_sku_tier  = "Standard"
+      enable_nat_gateway = true
+
+      # Detection mode logs what Prevention would have blocked. Running
+      # Prevention here first would block legitimate test traffic and teach
+      # the team to distrust the WAF.
+      enable_application_gateway       = true
+      application_gateway_sku          = "WAF_v2"
+      waf_mode                         = "Detection"
+      application_gateway_zones        = []
+      application_gateway_min_capacity = 1
+      application_gateway_max_capacity = 3
+      enable_public_load_balancer      = false
+
+      enable_bastion = true
+      bastion_sku    = "Basic"
+
+      vm_size                 = "Standard_D2s_v5"
+      instance_count          = 2
+      enable_autoscale        = true
+      autoscale_min_instances = 2
+      autoscale_max_instances = 4
+      compute_zones           = ["1", "2"]
+      use_spot_instances      = false
+      os_disk_type            = "StandardSSD_LRS"
+      os_disk_size_gb         = 128
+
+      sql_sku_name                   = "GP_Gen5_2"
+      sql_zone_redundant             = false
+      sql_backup_retention_days      = 7
+      sql_enable_long_term_retention = false
+
+      enable_redis   = true
+      redis_sku_name = "Standard"
+      redis_capacity = 1
+
+      storage_replication_type  = "LRS"
+      storage_enable_versioning = true
+
+      # Also off in test: the naming module produces a deterministic vault
+      # name, so purge protection would block recreating test after a
+      # teardown for the full retention period.
+      key_vault_purge_protection           = false
+      key_vault_soft_delete_retention_days = 30
+
+      enable_resource_locks  = false
+      enable_ddos_protection = false
+      enable_defender        = false
+
+      log_retention_days = 30
+      log_daily_quota_gb = -1
+      enable_vm_insights = true
+      enable_alerts      = true
+
+      enable_backup         = true
+      backup_retention_days = 14
+    }
+
+    ##########################################################################
+    # prod — full production grade.
+    #
+    # Every availability and security control enabled. Zone-redundant across
+    # compute, ingress, database and cache.
+    #
+    # NOT deployable on a free subscription. Indicative cost is four figures
+    # per month; see the indicative_monthly_cost_usd output.
+    ##########################################################################
+    prod = {
+      # Premium rather than Standard for IDPS and TLS inspection, which is
+      # what makes the firewall an inspection point rather than an expensive
+      # NAT device. Roughly $365/month more than Standard.
+      enable_firewall    = true
+      firewall_sku_tier  = "Premium"
+      enable_nat_gateway = false
+
+      enable_application_gateway       = true
+      application_gateway_sku          = "WAF_v2"
+      waf_mode                         = "Prevention"
+      application_gateway_zones        = ["1", "2", "3"]
+      application_gateway_min_capacity = 2
+      application_gateway_max_capacity = 10
+      enable_public_load_balancer      = false
+
+      enable_bastion = true
+      bastion_sku    = "Standard"
+
+      vm_size                 = "Standard_D4s_v5"
+      instance_count          = 3
+      enable_autoscale        = true
+      autoscale_min_instances = 3
+      autoscale_max_instances = 20
+      compute_zones           = ["1", "2", "3"]
+      use_spot_instances      = false
+      os_disk_type            = "Premium_LRS"
+      os_disk_size_gb         = 128
+
+      # Business Critical is required for zone redundancy plus a local replica
+      # set. General Purpose supports zone redundancy on some hardware but
+      # without the same failover characteristics.
+      sql_sku_name                   = "BC_Gen5_4"
+      sql_zone_redundant             = true
+      sql_backup_retention_days      = 35
+      sql_enable_long_term_retention = true
+
+      # Zone redundancy for Redis requires the Premium tier.
+      enable_redis   = true
+      redis_sku_name = "Premium"
+      redis_capacity = 1
+
+      storage_replication_type  = "GZRS"
+      storage_enable_versioning = true
+
+      key_vault_purge_protection           = true
+      key_vault_soft_delete_retention_days = 90
+
+      enable_resource_locks = true
+      # DDoS Network Protection is roughly $2,900/month per tenant and is
+      # therefore opt-in even in production. Enable it once, at tenant level,
+      # rather than per environment.
+      enable_ddos_protection = false
+      enable_defender        = true
+
+      log_retention_days = 90
+      # No daily cap in production. A cap drops data once hit, and the data it
+      # drops is exactly what an incident investigation needs.
+      log_daily_quota_gb = -1
+      enable_vm_insights = true
+      enable_alerts      = true
+
+      enable_backup         = true
+      backup_retention_days = 90
+    }
+  }
+
+  selected = local.profiles[var.environment]
+}
+
+################################################################################
+# Override application
+#
+# Written out attribute by attribute rather than with a merge() over the
+# override object. A for-expression over an object with mixed attribute types
+# forces Terraform to unify them into a single type, which either fails or
+# silently stringifies booleans and numbers. Explicit null checks are verbose
+# but preserve types exactly.
+################################################################################
+
+locals {
+  o = var.overrides
+
+  profile = {
+    enable_firewall    = local.o.enable_firewall != null ? local.o.enable_firewall : local.selected.enable_firewall
+    firewall_sku_tier  = local.o.firewall_sku_tier != null ? local.o.firewall_sku_tier : local.selected.firewall_sku_tier
+    enable_nat_gateway = local.o.enable_nat_gateway != null ? local.o.enable_nat_gateway : local.selected.enable_nat_gateway
+
+    enable_application_gateway       = local.o.enable_application_gateway != null ? local.o.enable_application_gateway : local.selected.enable_application_gateway
+    application_gateway_sku          = local.o.application_gateway_sku != null ? local.o.application_gateway_sku : local.selected.application_gateway_sku
+    waf_mode                         = local.o.waf_mode != null ? local.o.waf_mode : local.selected.waf_mode
+    application_gateway_zones        = local.o.application_gateway_zones != null ? local.o.application_gateway_zones : local.selected.application_gateway_zones
+    application_gateway_min_capacity = local.o.application_gateway_min_capacity != null ? local.o.application_gateway_min_capacity : local.selected.application_gateway_min_capacity
+    application_gateway_max_capacity = local.o.application_gateway_max_capacity != null ? local.o.application_gateway_max_capacity : local.selected.application_gateway_max_capacity
+    enable_public_load_balancer      = local.o.enable_public_load_balancer != null ? local.o.enable_public_load_balancer : local.selected.enable_public_load_balancer
+
+    enable_bastion = local.o.enable_bastion != null ? local.o.enable_bastion : local.selected.enable_bastion
+    bastion_sku    = local.o.bastion_sku != null ? local.o.bastion_sku : local.selected.bastion_sku
+
+    vm_size                 = local.o.vm_size != null ? local.o.vm_size : local.selected.vm_size
+    instance_count          = local.o.instance_count != null ? local.o.instance_count : local.selected.instance_count
+    enable_autoscale        = local.o.enable_autoscale != null ? local.o.enable_autoscale : local.selected.enable_autoscale
+    autoscale_min_instances = local.o.autoscale_min_instances != null ? local.o.autoscale_min_instances : local.selected.autoscale_min_instances
+    autoscale_max_instances = local.o.autoscale_max_instances != null ? local.o.autoscale_max_instances : local.selected.autoscale_max_instances
+    compute_zones           = local.o.compute_zones != null ? local.o.compute_zones : local.selected.compute_zones
+    use_spot_instances      = local.o.use_spot_instances != null ? local.o.use_spot_instances : local.selected.use_spot_instances
+    os_disk_type            = local.o.os_disk_type != null ? local.o.os_disk_type : local.selected.os_disk_type
+    os_disk_size_gb         = local.o.os_disk_size_gb != null ? local.o.os_disk_size_gb : local.selected.os_disk_size_gb
+
+    sql_sku_name                   = local.o.sql_sku_name != null ? local.o.sql_sku_name : local.selected.sql_sku_name
+    sql_zone_redundant             = local.o.sql_zone_redundant != null ? local.o.sql_zone_redundant : local.selected.sql_zone_redundant
+    sql_backup_retention_days      = local.o.sql_backup_retention_days != null ? local.o.sql_backup_retention_days : local.selected.sql_backup_retention_days
+    sql_enable_long_term_retention = local.o.sql_enable_long_term_retention != null ? local.o.sql_enable_long_term_retention : local.selected.sql_enable_long_term_retention
+    enable_redis                   = local.o.enable_redis != null ? local.o.enable_redis : local.selected.enable_redis
+    redis_sku_name                 = local.o.redis_sku_name != null ? local.o.redis_sku_name : local.selected.redis_sku_name
+    redis_capacity                 = local.o.redis_capacity != null ? local.o.redis_capacity : local.selected.redis_capacity
+    storage_replication_type       = local.o.storage_replication_type != null ? local.o.storage_replication_type : local.selected.storage_replication_type
+    storage_enable_versioning      = local.o.storage_enable_versioning != null ? local.o.storage_enable_versioning : local.selected.storage_enable_versioning
+
+    key_vault_purge_protection           = local.o.key_vault_purge_protection != null ? local.o.key_vault_purge_protection : local.selected.key_vault_purge_protection
+    key_vault_soft_delete_retention_days = local.o.key_vault_soft_delete_retention_days != null ? local.o.key_vault_soft_delete_retention_days : local.selected.key_vault_soft_delete_retention_days
+    enable_resource_locks                = local.o.enable_resource_locks != null ? local.o.enable_resource_locks : local.selected.enable_resource_locks
+    enable_ddos_protection               = local.o.enable_ddos_protection != null ? local.o.enable_ddos_protection : local.selected.enable_ddos_protection
+    enable_defender                      = local.o.enable_defender != null ? local.o.enable_defender : local.selected.enable_defender
+
+    log_retention_days    = local.o.log_retention_days != null ? local.o.log_retention_days : local.selected.log_retention_days
+    log_daily_quota_gb    = local.o.log_daily_quota_gb != null ? local.o.log_daily_quota_gb : local.selected.log_daily_quota_gb
+    enable_vm_insights    = local.o.enable_vm_insights != null ? local.o.enable_vm_insights : local.selected.enable_vm_insights
+    enable_alerts         = local.o.enable_alerts != null ? local.o.enable_alerts : local.selected.enable_alerts
+    enable_backup         = local.o.enable_backup != null ? local.o.enable_backup : local.selected.enable_backup
+    backup_retention_days = local.o.backup_retention_days != null ? local.o.backup_retention_days : local.selected.backup_retention_days
+  }
+}
+
+################################################################################
+# vCPU footprint
+#
+# Sizes not in this table skip the quota check rather than guessing, since a
+# wrong guess would either block a valid plan or pass an invalid one.
+################################################################################
+
+locals {
+  vm_size_vcpus = {
+    Standard_B1s     = 1
+    Standard_B1ms    = 1
+    Standard_B2s     = 2
+    Standard_B2ms    = 2
+    Standard_B4ms    = 4
+    Standard_B8ms    = 8
+    Standard_DS1_v2  = 1
+    Standard_DS2_v2  = 2
+    Standard_D2s_v3  = 2
+    Standard_D4s_v3  = 4
+    Standard_D2s_v5  = 2
+    Standard_D4s_v5  = 4
+    Standard_D8s_v5  = 8
+    Standard_D2ds_v5 = 2
+    Standard_D4ds_v5 = 4
+    Standard_D2ds_v7 = 2
+    Standard_D4ds_v7 = 4
+    Standard_F2s_v2  = 2
+    Standard_F4s_v2  = 4
+    Standard_E2s_v5  = 2
+    Standard_E4s_v5  = 4
+  }
+
+  vcpus_per_instance = lookup(local.vm_size_vcpus, local.profile.vm_size, null)
+
+  # Peak footprint is every compute tier at its autoscale maximum
+  # simultaneously, which is what a correlated load spike produces.
+  peak_instances = local.profile.enable_autoscale ? local.profile.autoscale_max_instances : local.profile.instance_count
+  peak_vcpus     = local.vcpus_per_instance == null ? null : local.vcpus_per_instance * local.peak_instances * var.compute_tier_count
+
+  quota_check_possible = var.subscription_vcpu_quota != null && local.peak_vcpus != null
+  quota_exceeded       = local.quota_check_possible && local.peak_vcpus > var.subscription_vcpu_quota
+}
+
+################################################################################
+# Indicative cost
+#
+# ORDER OF MAGNITUDE ONLY. Approximate US list prices, no committed-use or
+# enterprise discount, no data processing, egress, storage capacity or
+# transaction charges. Intended to answer "is this tens, hundreds or thousands
+# of dollars a month" at plan time. Use infracost for figures anyone will act
+# on financially.
+################################################################################
+
+locals {
+  cost_firewall = local.profile.enable_firewall ? (local.profile.firewall_sku_tier == "Premium" ? 1277 : 912) : 0
+  cost_nat      = local.profile.enable_nat_gateway ? 33 : 0
+
+  cost_appgw = local.profile.enable_application_gateway ? (
+    (local.profile.application_gateway_sku == "WAF_v2" ? 263 : 180)
+    + local.profile.application_gateway_min_capacity * 7
+  ) : 0
+
+  cost_public_lb = local.profile.enable_public_load_balancer ? 18 : 0
+
+  bastion_costs = {
+    Developer = 0
+    Basic     = 140
+    Standard  = 175
+  }
+  cost_bastion = local.profile.enable_bastion ? lookup(local.bastion_costs, local.profile.bastion_sku, 140) : 0
+
+  vm_monthly_costs = {
+    Standard_B1s     = 8
+    Standard_B1ms    = 15
+    Standard_B2s     = 30
+    Standard_B2ms    = 60
+    Standard_D2s_v5  = 70
+    Standard_D4s_v5  = 140
+    Standard_D8s_v5  = 280
+    Standard_D2ds_v5 = 82
+    Standard_D4ds_v5 = 164
+  }
+  cost_compute = lookup(local.vm_monthly_costs, local.profile.vm_size, 100) * local.profile.instance_count * var.compute_tier_count
+
+  sql_monthly_costs = {
+    GP_S_Gen5_1 = 15
+    GP_Gen5_2   = 370
+    GP_Gen5_4   = 740
+    BC_Gen5_2   = 465
+    BC_Gen5_4   = 930
+  }
+  cost_sql = lookup(local.sql_monthly_costs, local.profile.sql_sku_name, 400)
+
+  redis_monthly_costs = {
+    Basic    = 16
+    Standard = 75
+    Premium  = 412
+  }
+  cost_redis = local.profile.enable_redis ? lookup(local.redis_monthly_costs, local.profile.redis_sku_name, 75) : 0
+
+  cost_ddos = local.profile.enable_ddos_protection ? 2944 : 0
+
+  # Four private endpoints at roughly $7.30 each, plus the internal load
+  # balancer, plus a nominal Log Analytics figure.
+  cost_fixed = 29 + 18 + 10
+
+  indicative_monthly_cost_usd = (
+    local.cost_firewall + local.cost_nat + local.cost_appgw + local.cost_public_lb +
+    local.cost_bastion + local.cost_compute + local.cost_sql + local.cost_redis +
+    local.cost_ddos + local.cost_fixed
+  )
+}
+
+################################################################################
+# Coherence checks
+################################################################################
+
+locals {
+  valid_zones = ["1", "2", "3"]
+
+  constraint_failures = concat(
+    # Exactly one ingress path. Both would mean two public entry points, one
+    # of them bypassing the WAF entirely.
+    local.profile.enable_application_gateway && local.profile.enable_public_load_balancer ? [
+      "Both enable_application_gateway and enable_public_load_balancer are true. Two public ingress paths means one bypasses the WAF. Enable exactly one."
+    ] : [],
+
+    !local.profile.enable_application_gateway && !local.profile.enable_public_load_balancer ? [
+      "Neither enable_application_gateway nor enable_public_load_balancer is true. The application would have no ingress path."
+    ] : [],
+
+    # Exactly one egress path. Azure Firewall works by UDR and takes
+    # precedence, so a NAT Gateway alongside it is billed and unused.
+    local.profile.enable_firewall && local.profile.enable_nat_gateway ? [
+      "Both enable_firewall and enable_nat_gateway are true. The firewall UDR takes precedence, so the NAT Gateway would be billed (~$33/month) and never used. Enable exactly one."
+    ] : [],
+
+    !local.profile.enable_firewall && !local.profile.enable_nat_gateway ? [
+      "Neither enable_firewall nor enable_nat_gateway is true. Default outbound access was retired on 30 September 2025, so workload subnets would have no internet egress at all — package installs, agent enrolment and certificate revocation checks would all fail."
+    ] : [],
+
+    # Autoscale bounds.
+    local.profile.autoscale_min_instances > local.profile.autoscale_max_instances ? [
+      "autoscale_min_instances (${local.profile.autoscale_min_instances}) exceeds autoscale_max_instances (${local.profile.autoscale_max_instances})."
+    ] : [],
+
+    local.profile.enable_autoscale && local.profile.instance_count < local.profile.autoscale_min_instances ? [
+      "instance_count (${local.profile.instance_count}) is below autoscale_min_instances (${local.profile.autoscale_min_instances}); the scale set would be scaled up immediately on creation."
+    ] : [],
+
+    local.profile.enable_autoscale && local.profile.instance_count > local.profile.autoscale_max_instances ? [
+      "instance_count (${local.profile.instance_count}) exceeds autoscale_max_instances (${local.profile.autoscale_max_instances}); the scale set would be scaled down immediately on creation."
+    ] : [],
+
+    # Quota.
+    local.quota_exceeded ? [
+      "Peak vCPU footprint is ${local.peak_vcpus} (${local.vcpus_per_instance} vCPU x ${local.peak_instances} instances x ${var.compute_tier_count} tiers) but the subscription quota is ${var.subscription_vcpu_quota}. Scale-out would fail silently under load. Reduce autoscale_max_instances, choose a smaller vm_size, or request a quota increase."
+    ] : [],
+
+    # Zones.
+    length(setsubtract(toset(local.profile.compute_zones), toset(local.valid_zones))) > 0 ? [
+      "compute_zones contains values outside [\"1\", \"2\", \"3\"]: ${join(", ", tolist(setsubtract(toset(local.profile.compute_zones), toset(local.valid_zones))))}."
+    ] : [],
+
+    length(setsubtract(toset(local.profile.application_gateway_zones), toset(local.valid_zones))) > 0 ? [
+      "application_gateway_zones contains values outside [\"1\", \"2\", \"3\"]."
+    ] : [],
+
+    # WAF mode is only meaningful on the WAF SKU.
+    local.profile.enable_application_gateway && local.profile.application_gateway_sku != "WAF_v2" && local.profile.waf_mode == "Prevention" ? [
+      "waf_mode is \"Prevention\" but application_gateway_sku is \"${local.profile.application_gateway_sku}\". WAF rules require the WAF_v2 SKU; the setting would be silently ignored."
+    ] : [],
+
+    contains(["Detection", "Prevention"], local.profile.waf_mode) ? [] : [
+      "waf_mode must be \"Detection\" or \"Prevention\", got \"${local.profile.waf_mode}\"."
+    ],
+
+    # Zone redundancy requires tiers that support it.
+    local.profile.sql_zone_redundant && !startswith(local.profile.sql_sku_name, "BC_") && !startswith(local.profile.sql_sku_name, "P") ? [
+      "sql_zone_redundant is true but sql_sku_name is \"${local.profile.sql_sku_name}\". Zone redundancy requires a Business Critical or Premium tier."
+    ] : [],
+
+    length(local.profile.application_gateway_zones) > 0 && local.profile.enable_application_gateway && local.profile.application_gateway_sku == "Standard" ? [
+      "Application Gateway zones require a v2 SKU."
+    ] : [],
+
+    # Key Vault retention window.
+    local.profile.key_vault_soft_delete_retention_days < 7 || local.profile.key_vault_soft_delete_retention_days > 90 ? [
+      "key_vault_soft_delete_retention_days must be between 7 and 90, got ${local.profile.key_vault_soft_delete_retention_days}."
+    ] : [],
+
+    # Log Analytics retention window.
+    local.profile.log_retention_days < 30 || local.profile.log_retention_days > 730 ? [
+      "log_retention_days must be between 30 and 730, got ${local.profile.log_retention_days}."
+    ] : [],
+
+    # Spot instances are an availability trade, not a cost lever, for a tier
+    # fronted by a load balancer with an SLA.
+    local.profile.use_spot_instances && var.environment == "prod" ? [
+      "use_spot_instances is true in production. Spot instances are evicted with 30 seconds notice and carry no SLA."
+    ] : [],
+  )
+}
+
+################################################################################
+# Production guardrails
+#
+# Applied AFTER overrides, so an override cannot quietly produce an
+# unprotected production environment.
+################################################################################
+
+locals {
+  production_guardrail_failures = (
+    var.environment == "prod" && var.enforce_production_guardrails
+    ) ? concat(
+    local.profile.enable_backup ? [] : ["Production requires enable_backup."],
+    local.profile.enable_alerts ? [] : ["Production requires enable_alerts."],
+    local.profile.key_vault_purge_protection ? [] : ["Production requires key_vault_purge_protection. Without it, a deleted vault and its keys are unrecoverable."],
+    local.profile.enable_resource_locks ? [] : ["Production requires enable_resource_locks."],
+    local.profile.sql_backup_retention_days >= 35 ? [] : ["Production requires sql_backup_retention_days of at least 35, got ${local.profile.sql_backup_retention_days}."],
+    local.profile.log_daily_quota_gb > 0 ? ["Production must not set a Log Analytics daily quota (log_daily_quota_gb = ${local.profile.log_daily_quota_gb}). A cap drops ingestion once hit, including the security signals an investigation depends on. Use -1."] : [],
+  ) : []
+}
