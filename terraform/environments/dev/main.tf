@@ -403,3 +403,89 @@ module "managed_identity" {
 
   identities = module.naming.managed_identity_names
 }
+
+################################################################################
+# Phase 3 — Key Vault
+#
+# RBAC authorization only. The legacy access policy model is not used anywhere
+# in this platform: policies do not compose with Azure RBAC, are invisible to
+# `az role assignment list` and to standard access reviews, and must be
+# repeated per vault rather than assigned once at a higher scope.
+#
+# Reachability in dev is deliberately hybrid, and the reasoning is worth
+# stating because it looks like a weaker posture than it is:
+#
+#   - A private endpoint carries in-VNet traffic. Applications use the standard
+#     vault URI and the private DNS zone makes it resolve privately.
+#   - The public endpoint stays enabled but denies by default, permitting only
+#     the operator's IP.
+#
+# Key Vault secrets are managed over the DATA plane. With public access fully
+# disabled, a laptop outside the VNet — and Terraform running on it — cannot
+# read or write a secret at all. In dev that would mean no way to verify a
+# deployment without a jump host for every check. test and prod set
+# data_plane_public_access_enabled = false, because their pipelines run inside
+# the network.
+#
+# Purge protection is OFF in dev. It is irreversible, and since naming produces
+# a deterministic vault name, enabling it would block rebuilding the
+# environment for the full retention period.
+################################################################################
+
+data "azurerm_client_config" "current" {}
+
+module "key_vault" {
+  source = "../../modules/key-vault"
+
+  name                = module.naming.key_vault_name
+  resource_group_name = module.resource_group.names["sec"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+
+  purge_protection_enabled   = module.profile.profile.key_vault_purge_protection
+  soft_delete_retention_days = module.profile.profile.key_vault_soft_delete_retention_days
+
+  public_network_access_enabled = module.profile.data_plane_public_access_enabled
+  network_acls_default_action   = "Deny"
+  allowed_ip_rules              = var.deployer_ip_addresses
+
+  private_endpoint_subnet_id = module.networking.subnet_ids[local.pep_subnet]
+  private_endpoint_name      = "pep-kv-${module.naming.base}-001"
+  private_dns_zone_ids       = [module.private_dns.zone_ids_by_service["keyvault"]]
+
+  role_assignments = merge(
+    # Each tier reads its own secrets. Secrets User is read-only: the
+    # application can fetch a secret and cannot create, update or delete one.
+    {
+      for tier, principal_id in module.managed_identity.principal_ids :
+      "tier-${tier}" => {
+        principal_id         = principal_id
+        role_definition_name = "Key Vault Secrets User"
+        principal_type       = "ServicePrincipal"
+        description          = "Read-only secret access for the ${tier} tier."
+      }
+    },
+    # The deploying operator needs to manage secrets. Administrator rather than
+    # Secrets Officer because certificates and keys are managed here too.
+    {
+      deployer = {
+        principal_id         = data.azurerm_client_config.current.object_id
+        role_definition_name = "Key Vault Administrator"
+        principal_type       = "User"
+        description          = "Operator managing secrets, keys and certificates."
+      }
+    },
+  )
+
+  # Ordering, not decoration: the identities' principals must have propagated
+  # through Entra ID before role assignments referencing them are created.
+  depends_on = [module.managed_identity]
+}
+
+module "diagnostics_key_vault" {
+  source = "../../modules/diagnostics"
+
+  target_resource_id         = module.key_vault.id
+  log_analytics_workspace_id = module.log_analytics.id
+}

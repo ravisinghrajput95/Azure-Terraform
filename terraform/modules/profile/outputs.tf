@@ -68,6 +68,11 @@ output "enable_alerts" {
   value       = local.profile.enable_alerts
 }
 
+output "data_plane_public_access_enabled" {
+  description = "Whether Key Vault and Storage keep a public endpoint, firewalled to an explicit IP allowlist. True only in dev, where secrets must be manageable from an operator laptop outside the VNet. Production forbids it."
+  value       = local.profile.data_plane_public_access_enabled
+}
+
 output "enable_resource_locks" {
   description = "Whether CanNotDelete management locks are applied to stateful resources. This is the conditional substitute for `prevent_destroy`, which cannot accept a variable. See README.md."
   value       = local.profile.enable_resource_locks

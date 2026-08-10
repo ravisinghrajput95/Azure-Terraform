@@ -86,3 +86,13 @@ variable "firewall_private_ip" {
   type        = string
   default     = null
 }
+
+################################################################################
+# Data-plane access
+################################################################################
+
+variable "deployer_ip_addresses" {
+  description = "Public IPv4 addresses permitted to reach the Key Vault and Storage data planes. Required in dev, where secrets must be manageable from an operator machine outside the VNet — a private endpoint is only reachable from inside it, so with no allowlist Terraform itself could not write a secret. Azure rejects /31 and /32 suffixes here; supply bare addresses."
+  type        = list(string)
+  default     = []
+}

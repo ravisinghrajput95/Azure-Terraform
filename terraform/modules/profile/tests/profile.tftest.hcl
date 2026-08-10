@@ -454,3 +454,48 @@ run "rejects_unknown_environment" {
     var.environment,
   ]
 }
+
+################################################################################
+# Data-plane public access
+################################################################################
+
+run "dev_keeps_firewalled_public_data_plane" {
+  command = plan
+
+  # Key Vault and Storage secrets are managed over the DATA plane, and a
+  # private endpoint is only reachable from inside the VNet. With public access
+  # fully off, an operator on a laptop cannot read a secret at all. dev keeps
+  # the endpoint but firewalls it to an explicit allowlist.
+  assert {
+    condition     = output.data_plane_public_access_enabled == true
+    error_message = "dev must retain a firewalled public data plane, or secrets cannot be managed from outside the VNet."
+  }
+}
+
+run "test_and_prod_use_private_endpoint_only" {
+  command = plan
+
+  variables {
+    environment = "prod"
+  }
+
+  assert {
+    condition     = output.data_plane_public_access_enabled == false
+    error_message = "Production data services must be reachable only through private endpoints."
+  }
+}
+
+run "rejects_production_with_public_data_plane" {
+  command = plan
+
+  variables {
+    environment = "prod"
+    overrides = {
+      data_plane_public_access_enabled = true
+    }
+  }
+
+  expect_failures = [
+    terraform_data.validation,
+  ]
+}

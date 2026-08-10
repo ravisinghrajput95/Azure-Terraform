@@ -83,6 +83,20 @@ locals {
       storage_replication_type  = "LRS"
       storage_enable_versioning = false
 
+      # Data-plane public access stays ON in dev, but firewalled to an explicit
+      # IP allowlist with default_action = Deny.
+      #
+      # This is a deliberate trade, not an oversight. Key Vault and Storage
+      # secrets are managed over the DATA plane, and a private endpoint is only
+      # reachable from inside the VNet. With public access fully disabled, an
+      # operator on a laptop — and Terraform running there — cannot read or
+      # write a secret at all. In dev that would mean no way to verify the
+      # deployment without standing up a jump host for every check.
+      #
+      # test and prod turn this off: their pipelines run from inside the
+      # network, so the private endpoint is the only path they need.
+      data_plane_public_access_enabled = true
+
       # Purge protection is deliberately OFF in dev. Once enabled it CANNOT be
       # disabled, and a deleted vault name is unusable for the retention
       # period — which breaks the destroy/recreate cycle that keeps a trial
@@ -160,6 +174,9 @@ locals {
       storage_replication_type  = "LRS"
       storage_enable_versioning = true
 
+      # Private endpoint only. Pipelines run inside the network.
+      data_plane_public_access_enabled = false
+
       # Also off in test: the naming module produces a deterministic vault
       # name, so purge protection would block recreating test after a
       # teardown for the full retention period.
@@ -232,6 +249,8 @@ locals {
 
       storage_replication_type  = "GZRS"
       storage_enable_versioning = true
+
+      data_plane_public_access_enabled = false
 
       key_vault_purge_protection           = true
       key_vault_soft_delete_retention_days = 90
@@ -307,6 +326,7 @@ locals {
     storage_replication_type       = local.o.storage_replication_type != null ? local.o.storage_replication_type : local.selected.storage_replication_type
     storage_enable_versioning      = local.o.storage_enable_versioning != null ? local.o.storage_enable_versioning : local.selected.storage_enable_versioning
 
+    data_plane_public_access_enabled     = local.o.data_plane_public_access_enabled != null ? local.o.data_plane_public_access_enabled : local.selected.data_plane_public_access_enabled
     key_vault_purge_protection           = local.o.key_vault_purge_protection != null ? local.o.key_vault_purge_protection : local.selected.key_vault_purge_protection
     key_vault_soft_delete_retention_days = local.o.key_vault_soft_delete_retention_days != null ? local.o.key_vault_soft_delete_retention_days : local.selected.key_vault_soft_delete_retention_days
     enable_resource_locks                = local.o.enable_resource_locks != null ? local.o.enable_resource_locks : local.selected.enable_resource_locks
@@ -541,6 +561,7 @@ locals {
     local.profile.enable_alerts ? [] : ["Production requires enable_alerts."],
     local.profile.key_vault_purge_protection ? [] : ["Production requires key_vault_purge_protection. Without it, a deleted vault and its keys are unrecoverable."],
     local.profile.enable_resource_locks ? [] : ["Production requires enable_resource_locks."],
+    local.profile.data_plane_public_access_enabled ? ["Production must not expose data services on a public endpoint. Set data_plane_public_access_enabled = false; access is via private endpoint only."] : [],
     local.profile.sql_backup_retention_days >= 35 ? [] : ["Production requires sql_backup_retention_days of at least 35, got ${local.profile.sql_backup_retention_days}."],
     local.profile.log_daily_quota_gb > 0 ? ["Production must not set a Log Analytics daily quota (log_daily_quota_gb = ${local.profile.log_daily_quota_gb}). A cap drops ingestion once hit, including the security signals an investigation depends on. Use -1."] : [],
   ) : []

@@ -68,6 +68,7 @@ variable "overrides" {
     storage_enable_versioning      = optional(bool)
 
     # Security
+    data_plane_public_access_enabled     = optional(bool)
     key_vault_purge_protection           = optional(bool)
     key_vault_soft_delete_retention_days = optional(number)
     enable_resource_locks                = optional(bool)

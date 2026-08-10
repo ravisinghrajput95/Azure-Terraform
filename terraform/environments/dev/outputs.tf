@@ -197,3 +197,27 @@ output "managed_identity_client_ids" {
   description = "Map of tier to client (application) ID. Application code presents this when requesting a token for a specific user-assigned identity."
   value       = module.managed_identity.client_ids
 }
+
+################################################################################
+# Key Vault
+################################################################################
+
+output "key_vault_uri" {
+  description = "Data-plane URI. The same hostname resolves to the private endpoint from inside the VNet and to the firewalled public endpoint from the operator allowlist."
+  value       = module.key_vault.vault_uri
+}
+
+output "key_vault_reachable_from" {
+  description = "Who can reach the vault's data plane, in plain language."
+  value       = module.key_vault.reachable_from
+}
+
+output "key_vault_private_endpoint_ip" {
+  description = "Private IP the vault resolves to from inside the VNet."
+  value       = module.key_vault.private_endpoint_ip
+}
+
+output "key_vault_granted_principals" {
+  description = "Who holds which role on the vault — a single artefact for reviewing secret access."
+  value       = module.key_vault.granted_principal_ids
+}
