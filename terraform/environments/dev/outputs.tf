@@ -150,3 +150,17 @@ output "route_table_subnets" {
   description = "Map of route table name to the subnet names it is applied to."
   value       = module.route_table.associated_subnet_names
 }
+
+################################################################################
+# Private DNS
+################################################################################
+
+output "private_dns_zone_ids_by_service" {
+  description = "Map of service key to privatelink zone ID. Private endpoints consume these in their private_dns_zone_group."
+  value       = module.private_dns.zone_ids_by_service
+}
+
+output "private_dns_zone_names" {
+  description = "Privatelink zones created for this environment."
+  value       = module.private_dns.zone_names
+}

@@ -299,3 +299,41 @@ module "route_table" {
     }
   }
 }
+
+################################################################################
+# Phase 2 — private DNS zones
+#
+# Created before any private endpoint exists, because ordering here is a
+# security control rather than a convenience.
+#
+# A private endpoint whose DNS zone group finds no matching zone registers no A
+# record. The client then falls back to public DNS and resolves the service to
+# its PUBLIC address from inside the VNet. The endpoint exists, the NSG permits
+# it, the diagram is correct — and traffic leaves the network.
+#
+# Zones are selected by service key rather than by name, so a mistyped zone
+# name — which has no error path in Azure — is impossible.
+#
+# They live in the networking resource group, not data: zones outlive the
+# individual services that register into them, and destroying the data tier
+# must not orphan them.
+################################################################################
+
+module "private_dns" {
+  source = "../../modules/private-dns"
+
+  resource_group_name = module.resource_group.names["net"]
+  tags                = module.tags.tags
+
+  # Phase 3 and 4 consumers: Key Vault, Storage (blob), SQL and Redis.
+  services = ["keyvault", "blob", "sql", "redis"]
+
+  virtual_network_ids = {
+    (module.networking.vnet_name) = module.networking.vnet_id
+  }
+
+  # VMSS instances must not self-register into a zone Azure manages on behalf
+  # of private endpoints, and the single registration-enabled link a VNet is
+  # allowed should not be spent here.
+  registration_enabled = false
+}
