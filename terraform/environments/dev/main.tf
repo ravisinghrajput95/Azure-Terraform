@@ -337,3 +337,38 @@ module "private_dns" {
   # allowed should not be spent here.
   registration_enabled = false
 }
+
+################################################################################
+# Phase 2 — Azure Bastion
+#
+# Operator access to instances that carry no public IP and accept SSH from
+# nowhere except the Bastion subnet. This is what makes the "no public compute"
+# position workable rather than merely stated.
+#
+# dev uses the Developer SKU: no charge, but a shared regional instance that
+# attaches by VNet ID rather than consuming AzureBastionSubnet, and offers
+# browser sessions only — no native client tunneling, no file copy, no peered
+# VNet access.
+#
+# AzureBastionSubnet and its mandated NSG rules were created in modules 7 and 8
+# and stay empty, held in reserve so a later move to Standard needs no network
+# change.
+################################################################################
+
+module "bastion" {
+  source = "../../modules/bastion"
+  count  = module.profile.enable_bastion ? 1 : 0
+
+  name                = module.naming.names.bastion
+  resource_group_name = module.resource_group.names["net"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  sku = module.profile.profile.bastion_sku
+
+  # Developer attaches by VNet; Basic and above take the subnet and a public IP.
+  # The module rejects a mismatched pairing at plan time.
+  virtual_network_id = module.profile.profile.bastion_sku == "Developer" ? module.networking.vnet_id : null
+  subnet_id          = module.profile.profile.bastion_sku == "Developer" ? null : module.networking.subnet_ids[local.bastion_subnet]
+  public_ip_name     = module.profile.profile.bastion_sku == "Developer" ? null : "pip-bas-${module.naming.base}-001"
+}

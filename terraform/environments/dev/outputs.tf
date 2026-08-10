@@ -164,3 +164,17 @@ output "private_dns_zone_names" {
   description = "Privatelink zones created for this environment."
   value       = module.private_dns.zone_names
 }
+
+################################################################################
+# Bastion
+################################################################################
+
+output "bastion_dns_name" {
+  description = "FQDN of the Bastion host, used by the portal and by `az network bastion` to establish sessions."
+  value       = try(module.bastion[0].dns_name, null)
+}
+
+output "bastion_capability_notes" {
+  description = "What the deployed Bastion SKU can and cannot do."
+  value       = try(module.bastion[0].capability_notes, null)
+}
