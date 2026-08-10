@@ -372,3 +372,34 @@ module "bastion" {
   subnet_id          = module.profile.profile.bastion_sku == "Developer" ? null : module.networking.subnet_ids[local.bastion_subnet]
   public_ip_name     = module.profile.profile.bastion_sku == "Developer" ? null : "pip-bas-${module.naming.base}-001"
 }
+
+################################################################################
+# Phase 3 — managed identities
+#
+# One user-assigned identity per compute tier, created before Key Vault and
+# Storage because those modules' role assignments reference these principal IDs.
+#
+# User-assigned rather than system-assigned: a system-assigned identity is
+# destroyed with its resource, so every scale set replacement would produce a
+# new principal ID and silently invalidate every grant pointing at the old one.
+# A routine instance refresh would remove the application's access to its own
+# secrets.
+#
+# One identity per tier rather than one shared: network isolation without
+# identity isolation makes the NSG boundary decorative, because anything
+# reaching a tier inherits that tier's entire access footprint.
+#
+# No role assignments here. The key-vault and storage modules grant access
+# scoped to themselves, so a grant dies with the resource it protects rather
+# than outliving it as an orphan.
+################################################################################
+
+module "managed_identity" {
+  source = "../../modules/managed-identity"
+
+  resource_group_name = module.resource_group.names["sec"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  identities = module.naming.managed_identity_names
+}

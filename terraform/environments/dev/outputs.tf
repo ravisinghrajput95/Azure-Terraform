@@ -178,3 +178,22 @@ output "bastion_capability_notes" {
   description = "What the deployed Bastion SKU can and cannot do."
   value       = try(module.bastion[0].capability_notes, null)
 }
+
+################################################################################
+# Managed identities
+################################################################################
+
+output "managed_identity_ids" {
+  description = "Map of tier to user-assigned identity resource ID, referenced by a scale set's identity block."
+  value       = module.managed_identity.ids
+}
+
+output "managed_identity_principal_ids" {
+  description = "Map of tier to principal (object) ID. Role assignments and Key Vault RBAC grants reference this, not the client ID."
+  value       = module.managed_identity.principal_ids
+}
+
+output "managed_identity_client_ids" {
+  description = "Map of tier to client (application) ID. Application code presents this when requesting a token for a specific user-assigned identity."
+  value       = module.managed_identity.client_ids
+}
