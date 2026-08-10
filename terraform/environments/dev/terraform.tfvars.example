@@ -1,0 +1,11 @@
+subscription_id = "<subscription-guid>"
+workload        = "cloudcart"
+location        = "eastus"
+
+owner       = "platform-team@example.com"
+cost_center = "CC-DEV-001"
+
+criticality         = "low"
+data_classification = "internal"
+
+subscription_vcpu_quota = 4

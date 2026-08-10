@@ -1,0 +1,99 @@
+# Module: `resource-group`
+
+Creates one resource group per lifecycle scope and, optionally, management
+locks to protect them from deletion.
+
+First module in the platform that creates Azure resources.
+
+---
+
+## Usage
+
+```hcl
+module "resource_group" {
+  source = "../../modules/resource-group"
+
+  resource_group_names  = module.naming.resource_group_names
+  location              = module.naming.location_normalized
+  tags                  = module.tags.tags
+  enable_resource_locks = module.profile.enable_resource_locks
+}
+```
+
+## Inputs
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `resource_group_names` | `map(string)` | — | Scope → name, from `naming`. |
+| `location` | `string` | — | Normalised region, from `naming.location_normalized`. |
+| `tags` | `map(string)` | — | From `tags`. |
+| `enable_resource_locks` | `bool` | `false` | From `profile`. |
+| `lock_scopes` | `list(string)` | `["net","sec","data"]` | Scopes that receive a lock. |
+| `lock_level` | `string` | `"CanNotDelete"` | `CanNotDelete` or `ReadOnly`. |
+
+## Outputs
+
+`ids`, `names`, `location`, `resource_groups`, `locked_scopes`, `lock_ids` —
+all keyed by lifecycle scope.
+
+---
+
+## The five groups
+
+| Scope | Contents | Lifecycle |
+|---|---|---|
+| `net` | VNet, subnets, NSGs, route tables, firewall, Bastion, private DNS | Slow, tightly controlled |
+| `sec` | Key Vault, managed identities | Slow, security-owned |
+| `data` | SQL, Redis, storage, private endpoints | Medium |
+| `app` | VMSS, load balancer, App Gateway, autoscale | Fast, deploys with the app |
+| `mon` | Log Analytics, action groups, alerts, Recovery Services vault | Slow, must outlive what it observes |
+
+Resource groups are the unit of RBAC scope and deletion blast radius.
+Separating them means the identity that redeploys the application cannot delete
+the network edge or the database. The monitoring group sits outside the
+application group so tearing down an app stack does not destroy its own audit
+trail.
+
+---
+
+## Design notes
+
+**`for_each` over the scope map, never `count` over a list.** With `count`,
+removing one scope re-indexes every group after it and Terraform plans to
+destroy and recreate unrelated resource groups. With `for_each`, each group is
+addressed by its scope name, so removal affects only that group.
+
+**Management locks are the conditional substitute for `prevent_destroy`.**
+`lifecycle { prevent_destroy = ... }` requires a literal and rejects any
+variable or expression — there is no way to enable it for production and not
+for dev. `azurerm_management_lock` accepts a conditional `for_each`, so
+deletion protection is driven by the profile's `enable_resource_locks` flag.
+
+**`app` is excluded from `lock_scopes` by default.** A `CanNotDelete` lock on a
+resource group cascades to every resource inside it. On the network, security
+and data groups that is the intent. On the application group it would block the
+scale set replacements that routine deploys depend on.
+
+**`prevent_deletion_if_contains_resources` is set in the provider.** Azure's
+default behaviour deletes a resource group and everything in it, including
+resources created outside Terraform. The root module turns that off.
+
+**A precondition catches `lock_scopes` entries with no matching group.** Without
+it, naming a nonexistent scope silently creates no lock — the resource group
+appears protected and is not.
+
+---
+
+## Operational notes
+
+**A locked group blocks `terraform destroy`.** That is the point, but it makes
+teardown a two-step operation: remove the locks, then destroy. Check the
+`locked_scopes` output before planning a teardown.
+
+**Removing a lock in the portal is reverted on the next apply.** Terraform owns
+the lock. Remove it through configuration, not the portal.
+
+**Deleting a scope from `resource_group_names` destroys that group and
+everything inside it.** The provider setting above prevents this when the group
+contains resources Terraform does not manage, but resources Terraform *does*
+manage will be destroyed with it.
