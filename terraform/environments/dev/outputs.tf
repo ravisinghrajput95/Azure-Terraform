@@ -112,3 +112,22 @@ output "subnets_without_egress" {
   description = "Subnets with no outbound internet path. AzureBastionSubnet is expected here; anything else is worth investigating."
   value       = module.networking.subnets_without_egress
 }
+
+################################################################################
+# Network security
+################################################################################
+
+output "nsg_ids" {
+  description = "Map of NSG name to resource ID."
+  value       = module.nsg.ids
+}
+
+output "nsg_rules" {
+  description = "Effective rule matrix per NSG, in Azure's evaluation order. Diff this between environments to review policy drift."
+  value       = module.nsg.rules_by_nsg
+}
+
+output "nsgs_without_explicit_deny" {
+  description = "NSGs relying on Azure's built-in AllowVnetInBound, which permits all intra-VNet traffic. Should always be empty."
+  value       = setsubtract(toset(keys(module.nsg.ids)), toset(module.nsg.nsgs_with_explicit_inbound_deny))
+}

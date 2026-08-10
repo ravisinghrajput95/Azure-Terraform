@@ -209,3 +209,28 @@ module "diagnostics_vnet" {
   target_resource_id         = module.networking.vnet_id
   log_analytics_workspace_id = module.log_analytics.id
 }
+
+################################################################################
+# Phase 2 — network security groups
+#
+# The rule matrix lives in nsg-rules.tf so the environment's security policy is
+# reviewable as one artefact rather than spread through module wiring.
+################################################################################
+
+module "nsg" {
+  source = "../../modules/nsg"
+
+  resource_group_name = module.resource_group.names["net"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  network_security_groups = local.nsg_definitions
+}
+
+module "diagnostics_nsg" {
+  source   = "../../modules/diagnostics"
+  for_each = module.nsg.ids
+
+  target_resource_id         = each.value
+  log_analytics_workspace_id = module.log_analytics.id
+}
