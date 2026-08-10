@@ -1,0 +1,395 @@
+################################################################################
+# Terraform CI
+#
+# Runs on every pull request and every push to main. Nothing here applies
+# anything — this pipeline validates, lints, scans, prices and documents.
+#
+# Authentication is by OIDC workload identity federation, NOT a stored service
+# principal secret. GitHub mints a short-lived token per run and Azure
+# validates it against a federated credential scoped to this repository. There
+# is no long-lived credential in repository secrets to leak or rotate.
+#
+# Required repository configuration (see .github/workflows/README.md):
+#   Variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
+#              TFSTATE_RESOURCE_GROUP, TFSTATE_STORAGE_ACCOUNT
+#   Secrets:   INFRACOST_API_KEY  (optional — that job is skipped without it)
+################################################################################
+
+name: Terraform CI
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+  workflow_dispatch:
+
+# OIDC needs id-token: write. Everything else is least privilege — the workflow
+# writes PR comments and nothing more.
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: terraform-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: "1.9.8"
+  TF_IN_AUTOMATION: "true"
+  # Terraform's own colour codes make log output unreadable in Actions.
+  TF_CLI_ARGS: "-no-color"
+
+jobs:
+  ##############################################################################
+  # Format and validate
+  #
+  # Runs with -backend=false so it needs no Azure credentials at all. This is
+  # the fastest signal and gates everything else.
+  ##############################################################################
+  validate:
+    name: Format & validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: |
+          if ! terraform fmt -check -recursive terraform/; then
+            echo "::error::Files are not formatted. Run: terraform fmt -recursive terraform/"
+            exit 1
+          fi
+
+      - name: terraform validate — every module and environment
+        run: |
+          set -euo pipefail
+          failed=0
+          for dir in terraform/modules/*/ terraform/environments/*/; do
+            [ -n "$(find "$dir" -maxdepth 1 -name '*.tf' -print -quit)" ] || continue
+            echo "::group::validate $dir"
+            if ! (cd "$dir" && terraform init -backend=false -input=false >/dev/null && terraform validate); then
+              echo "::error file=${dir}::terraform validate failed"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $failed
+
+  ##############################################################################
+  # Unit tests
+  #
+  # The naming, tags and profile modules are pure computation with no provider,
+  # so `terraform test` runs with no cloud access whatsoever.
+  ##############################################################################
+  test:
+    name: Module unit tests
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform test
+        run: |
+          set -euo pipefail
+          failed=0
+          for dir in terraform/modules/*/; do
+            [ -d "${dir}tests" ] || continue
+            echo "::group::test ${dir}"
+            if ! (cd "$dir" && terraform init -backend=false -input=false >/dev/null && terraform test); then
+              echo "::error file=${dir}::terraform test failed"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $failed
+
+  ##############################################################################
+  # TFLint
+  #
+  # Catches what `terraform validate` cannot: deprecated syntax, unused
+  # declarations, and provider-specific rules such as invalid Azure VM sizes and
+  # malformed resource names — the class of error that otherwise fails minutes
+  # into an apply.
+  ##############################################################################
+  tflint:
+    name: TFLint
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: Cache TFLint plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: tflint-${{ hashFiles('.tflint.hcl') }}
+
+      - run: tflint --init
+
+      - name: Lint every module and environment
+        run: |
+          set -euo pipefail
+          failed=0
+          for dir in terraform/modules/*/ terraform/environments/*/; do
+            [ -n "$(find "$dir" -maxdepth 1 -name '*.tf' -print -quit)" ] || continue
+            echo "::group::tflint $dir"
+            tflint --chdir="$dir" --format=compact || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed
+
+  ##############################################################################
+  # Security scanning
+  #
+  # Trivy for misconfiguration and Checkov for policy. They overlap but not
+  # completely — Trivy is faster and catches provider-level issues, Checkov has
+  # deeper Azure-specific policy coverage.
+  #
+  # Results upload as SARIF so findings appear inline on the pull request rather
+  # than buried in a log.
+  ##############################################################################
+  security-scan:
+    name: Security scan
+    runs-on: ubuntu-latest
+    needs: validate
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy — misconfiguration scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: terraform/
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: "0" # report, do not block; the gate is the SARIF review
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy.sarif
+          category: trivy
+
+      - name: Checkov — policy scan
+        id: checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          output_format: cli,sarif
+          output_file_path: console,checkov.sarif
+          soft_fail: true
+          download_external_modules: false
+
+      - name: Upload Checkov SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov.sarif
+          category: checkov
+
+      # Blocks only on CRITICAL. HIGH and below are reported for triage —
+      # a scanner that fails the build on every advisory gets muted, and a
+      # muted scanner protects nothing.
+      - name: Fail on CRITICAL findings
+        run: |
+          count=$(python3 -c "
+          import json
+          try:
+              d = json.load(open('trivy.sarif'))
+              n = sum(1 for r in d.get('runs', [])
+                        for res in r.get('results', [])
+                        if res.get('level') == 'error')
+              print(n)
+          except Exception:
+              print(0)
+          ")
+          echo "CRITICAL findings: $count"
+          if [ "$count" -gt 0 ]; then
+            echo "::error::$count CRITICAL security findings. See the Security tab."
+            exit 1
+          fi
+
+  ##############################################################################
+  # Documentation
+  #
+  # terraform-docs regenerates the input and output tables inside each module
+  # README, between BEGIN_TF_DOCS and END_TF_DOCS markers. The prose around them
+  # is hand-written and untouched.
+  #
+  # On a pull request this FAILS if docs are stale rather than committing for
+  # you — an auto-commit from CI re-triggers the workflow and muddies the
+  # history.
+  ##############################################################################
+  docs:
+    name: Terraform docs
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate module documentation
+        uses: terraform-docs/gh-actions@v1
+        with:
+          working-dir: terraform/modules
+          find-dir: terraform/modules
+          output-file: README.md
+          output-method: inject
+          git-push: "false"
+          fail-on-diff: "true"
+
+  ##############################################################################
+  # Cost estimation
+  #
+  # Infracost prices the plan and comments the delta on the pull request. It is
+  # the answer to "how much does this change cost", which is otherwise
+  # discovered on next month's bill.
+  #
+  # Skipped when INFRACOST_API_KEY is absent so the pipeline works in a fork.
+  ##############################################################################
+  cost:
+    name: Cost estimate
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for Infracost key
+        id: guard
+        run: echo "enabled=${{ secrets.INFRACOST_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
+
+      - uses: infracost/actions/setup@v3
+        if: steps.guard.outputs.enabled == 'true'
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Baseline cost on the target branch
+        if: steps.guard.outputs.enabled == 'true'
+        run: |
+          git checkout "${{ github.event.pull_request.base.sha }}"
+          infracost breakdown \
+            --path=terraform/environments \
+            --format=json \
+            --out-file=/tmp/infracost-base.json
+          git checkout "${{ github.event.pull_request.head.sha }}"
+
+      - name: Cost diff
+        if: steps.guard.outputs.enabled == 'true'
+        run: |
+          infracost diff \
+            --path=terraform/environments \
+            --compare-to=/tmp/infracost-base.json \
+            --format=json \
+            --out-file=/tmp/infracost.json
+
+      - name: Comment on the pull request
+        if: steps.guard.outputs.enabled == 'true'
+        run: |
+          infracost comment github \
+            --path=/tmp/infracost.json \
+            --repo="$GITHUB_REPOSITORY" \
+            --github-token="${{ github.token }}" \
+            --pull-request="${{ github.event.pull_request.number }}" \
+            --behavior=update
+
+      - name: Note when skipped
+        if: steps.guard.outputs.enabled != 'true'
+        run: echo "::notice::INFRACOST_API_KEY is not set — cost estimation skipped."
+
+  ##############################################################################
+  # Plan
+  #
+  # Runs against real state, so it needs Azure. A plan is read-only, but it
+  # takes a state LOCK — hence the concurrency group above, which prevents two
+  # runs deadlocking on the same environment.
+  #
+  # -detailed-exitcode: 0 no changes, 1 error, 2 changes present.
+  ##############################################################################
+  plan:
+    name: Plan (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    needs: [validate, tflint]
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform plan
+        working-directory: terraform/environments/${{ matrix.environment }}
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD: "true"
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=tfstate-${{ matrix.environment }}" \
+            -backend-config="key=cloudcart.${{ matrix.environment }}.tfstate" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="use_oidc=true"
+
+          terraform plan -input=false -detailed-exitcode -out=tfplan | tee plan.txt
+          echo "exit=$?"
+
+      - name: Comment plan on the pull request
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'terraform/environments/${{ matrix.environment }}/plan.txt';
+            if (!fs.existsSync(path)) return;
+            let plan = fs.readFileSync(path, 'utf8');
+            const LIMIT = 60000;
+            if (plan.length > LIMIT) {
+              plan = plan.slice(-LIMIT) + '\n\n... truncated, see the workflow log for the full plan.';
+            }
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Plan — \`${{ matrix.environment }}\`\n\n<details><summary>Show plan</summary>\n\n\`\`\`terraform\n${plan}\n\`\`\`\n\n</details>`,
+            });

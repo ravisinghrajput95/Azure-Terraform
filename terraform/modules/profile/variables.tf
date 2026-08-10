@@ -63,7 +63,7 @@ variable "overrides" {
     sql_enable_long_term_retention = optional(bool)
     enable_redis                   = optional(bool)
     redis_sku_name                 = optional(string)
-    redis_capacity                 = optional(number)
+    redis_high_availability        = optional(bool)
     storage_replication_type       = optional(string)
     storage_enable_versioning      = optional(bool)
 

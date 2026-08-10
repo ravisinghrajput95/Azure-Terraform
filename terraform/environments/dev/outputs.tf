@@ -274,3 +274,27 @@ output "sql_admin_is_individual" {
   description = "True when the Entra SQL administrator is a named user rather than a group — a governance weakness worth resolving in any shared subscription."
   value       = module.sql.administrator_is_individual
 }
+
+################################################################################
+# Redis
+################################################################################
+
+output "redis_hostname" {
+  description = "Cache hostname. Resolves to the private endpoint inside the VNet."
+  value       = try(module.redis[0].hostname, null)
+}
+
+output "redis_connection_guidance" {
+  description = "How to connect. No password — access keys are disabled and clients present a managed identity."
+  value       = try(module.redis[0].connection_guidance, null)
+}
+
+output "redis_availability_summary" {
+  description = "Plain-language availability posture of the deployed tier."
+  value       = try(module.redis[0].availability_summary, null)
+}
+
+output "redis_reachable_from" {
+  description = "Who can reach the cache, in plain language."
+  value       = try(module.redis[0].reachable_from, null)
+}

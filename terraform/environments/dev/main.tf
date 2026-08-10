@@ -329,7 +329,10 @@ module "private_dns" {
   tags                = module.tags.tags
 
   # Phase 3 and 4 consumers: Key Vault, Storage (blob), SQL and Redis.
-  services = ["keyvault", "blob", "sql", "redis"]
+  # managed_redis, not redis: Azure Cache for Redis is retiring and Azure
+  # Managed Redis uses a different privatelink zone
+  # (privatelink.redis.azure.net vs privatelink.redis.cache.windows.net).
+  services = ["keyvault", "blob", "sql", "managed_redis"]
 
   virtual_network_ids = {
     (module.networking.vnet_name) = module.networking.vnet_id
@@ -645,5 +648,70 @@ module "diagnostics_sql" {
   # resource exposes almost nothing; the query, wait and deadlock telemetry
   # worth having lives on the database.
   target_resource_id         = module.sql.database_id
+  log_analytics_workspace_id = module.log_analytics.id
+}
+
+################################################################################
+# Phase 4 — Azure Cache for Redis
+#
+# Azure Cache for Redis is RETIRING — its API rejects creation outright — so
+# this uses Azure Managed Redis (Microsoft.Cache/redisEnterprise) instead.
+# Zone redundancy, clustering and data persistence are all Premium-only, and
+# Premium is roughly $412/month against $16 for Basic C0 — so dev proves the
+# wiring, the authentication model and the private path, but not the
+# availability behaviour.
+#
+# Basic is a SINGLE NODE with NO SLA: a host fault or a routine restart loses
+# the entire cache with no replica to fail over to. That is acceptable here
+# only because the cache is an accelerator and a cold start is survivable. The
+# availability_summary output states this plainly rather than leaving it
+# implicit in the SKU name.
+#
+# Access keys are disabled. Redis keys have the same weaknesses as storage
+# account keys — static, non-expiring, unscopable, total control — and Redis 6+
+# supports Entra ID authentication instead.
+################################################################################
+
+module "redis" {
+  source = "../../modules/redis"
+  count  = module.profile.enable_redis ? 1 : 0
+
+  name                = module.naming.redis_name
+  resource_group_name = module.resource_group.names["data"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  sku_name                  = module.profile.profile.redis_sku_name
+  high_availability_enabled = module.profile.profile.redis_high_availability
+
+  # Entra ID only, TLS only.
+  access_keys_authentication_enabled = false
+  client_protocol                    = "Encrypted"
+
+  # With access keys disabled, an access policy assignment is the ONLY path to
+  # the data plane. Each tier's identity gets one; without it nothing could
+  # connect at all.
+  access_policy_assignments = {
+    for tier, principal_id in module.managed_identity.principal_ids :
+    "tier-${tier}" => { principal_id = principal_id }
+  }
+
+  # No public endpoint at all. Unlike Key Vault and Storage, nothing in this
+  # platform needs to reach Redis from an operator machine — there are no
+  # secrets to manage and no containers to create, so the private endpoint is
+  # the only path required.
+  public_network_access_enabled = false
+
+  create_private_endpoint    = true
+  private_endpoint_subnet_id = module.networking.subnet_ids[local.pep_subnet]
+  private_endpoint_name      = "pep-redis-${module.naming.base}-001"
+  private_dns_zone_ids       = [module.private_dns.zone_ids_by_service["managed_redis"]]
+}
+
+module "diagnostics_redis" {
+  source   = "../../modules/diagnostics"
+  for_each = module.profile.enable_redis ? { this = module.redis[0].id } : {}
+
+  target_resource_id         = each.value
   log_analytics_workspace_id = module.log_analytics.id
 }

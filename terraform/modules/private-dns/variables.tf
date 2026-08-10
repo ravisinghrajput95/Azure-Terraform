@@ -33,7 +33,7 @@ variable "tags" {
 ################################################################################
 
 variable "services" {
-  description = "Service keys to create privatelink zones for. Valid keys: sql, sql_mi, blob, file, queue, table, dfs, web_storage, keyvault, redis, redis_enterprise, cosmos_sql, servicebus, eventhub, acr, aks, app_service, monitor, automation, signalr, search, appconfig, backup, storage_sync."
+  description = "Service keys to create privatelink zones for. Valid keys: sql, sql_mi, blob, file, queue, table, dfs, web_storage, keyvault, redis, managed_redis, redis_enterprise, cosmos_sql, servicebus, eventhub, acr, aks, app_service, monitor, automation, signalr, search, appconfig, backup, storage_sync."
   type        = list(string)
   default     = []
 

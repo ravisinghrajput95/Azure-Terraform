@@ -1,0 +1,245 @@
+################################################################################
+# Drift detection
+#
+# Runs a read-only plan against each environment on a schedule and opens an
+# issue when reality has diverged from configuration.
+#
+# Drift matters because it is usually evidence of something else: a change made
+# in the portal during an incident and never brought back into code, an Azure
+# Policy mutating a property, or a service updating a default. Each of those is
+# worth knowing about within a day rather than discovering at the next apply,
+# when the plan proposes to undo it.
+#
+# This workflow NEVER applies. It reports.
+################################################################################
+
+name: Drift detection
+
+on:
+  schedule:
+    # 06:00 UTC daily — before the working day, so a drift issue is waiting
+    # rather than arriving mid-change.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to check
+        required: false
+        default: dev
+        type: choice
+        options: [dev, test, prod]
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+# A plan takes a state lock. Serialising prevents a scheduled run from
+# deadlocking against a deploy.
+concurrency:
+  group: terraform-drift-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.9.8"
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  detect:
+    name: Detect drift (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only environments that actually exist. Add test and prod as they are
+        # deployed — a scheduled job failing against a nonexistent environment
+        # trains people to ignore it.
+        environment: [dev]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: terraform/environments/${{ matrix.environment }}
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD: "true"
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          terraform init -no-color \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=tfstate-${{ matrix.environment }}" \
+            -backend-config="key=cloudcart.${{ matrix.environment }}.tfstate" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="use_oidc=true"
+
+      # -detailed-exitcode: 0 = no drift, 1 = error, 2 = drift present.
+      # The distinction matters: an error is not the same as drift, and
+      # conflating them either hides failures or cries wolf.
+      - name: Plan
+        id: plan
+        working-directory: terraform/environments/${{ matrix.environment }}
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD: "true"
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set +e
+          terraform plan -no-color -input=false -detailed-exitcode -refresh-only > refresh.txt 2>&1
+          refresh_code=$?
+          terraform plan -no-color -input=false -detailed-exitcode > plan.txt 2>&1
+          plan_code=$?
+          set -e
+
+          echo "refresh_code=$refresh_code" >> "$GITHUB_OUTPUT"
+          echo "plan_code=$plan_code"       >> "$GITHUB_OUTPUT"
+
+          case "$plan_code" in
+            0) echo "status=clean"  >> "$GITHUB_OUTPUT" ;;
+            2) echo "status=drift"  >> "$GITHUB_OUTPUT" ;;
+            *) echo "status=error"  >> "$GITHUB_OUTPUT" ;;
+          esac
+
+          tail -100 plan.txt
+
+      - name: Summary
+        working-directory: terraform/environments/${{ matrix.environment }}
+        run: |
+          {
+            echo "## Drift check — \`${{ matrix.environment }}\`"
+            echo ""
+            case "${{ steps.plan.outputs.status }}" in
+              clean) echo "No drift. Infrastructure matches configuration." ;;
+              drift) echo "**Drift detected.** Reality has diverged from configuration." ;;
+              error) echo "**Plan failed.** This is an error, not drift." ;;
+            esac
+            echo ""
+            echo '```terraform'
+            tail -80 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # One issue per environment, updated rather than duplicated. A scheduled
+      # job that opens a new issue every morning gets filtered to trash within
+      # a week.
+      - name: Open or update a drift issue
+        if: steps.plan.outputs.status == 'drift' || steps.plan.outputs.status == 'error'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const env = '${{ matrix.environment }}';
+            const status = '${{ steps.plan.outputs.status }}';
+            const title = `Drift detected in \`${env}\``;
+
+            let plan = '';
+            try {
+              plan = fs.readFileSync(`terraform/environments/${env}/plan.txt`, 'utf8');
+            } catch (e) {
+              plan = 'Plan output unavailable.';
+            }
+            const LIMIT = 50000;
+            if (plan.length > LIMIT) {
+              plan = plan.slice(-LIMIT) + '\n\n... truncated, see the workflow run.';
+            }
+
+            const heading = status === 'error'
+              ? 'The scheduled plan **failed**. This is an error, not drift — investigate before assuming the environment is intact.'
+              : 'The scheduled plan found changes. Reality has diverged from configuration.';
+
+            const body = [
+              `### ${heading}`,
+              '',
+              `- Environment: \`${env}\``,
+              `- Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              `- Detected: ${new Date().toISOString()}`,
+              '',
+              'Drift is usually evidence of something else — a portal change made during an incident and never brought back into code, an Azure Policy mutating a property, or a service changing a default. Reconcile by updating the configuration to match intent, then applying. Do not simply apply over it without understanding what moved.',
+              '',
+              '<details><summary>Plan output</summary>',
+              '',
+              '```terraform',
+              plan,
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'drift',
+            });
+            const match = existing.data.find(i => i.title === title);
+
+            if (match) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: match.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['drift', 'infrastructure'],
+              });
+            }
+
+      # Closing on recovery is what keeps the signal trustworthy: an issue that
+      # stays open after the problem is fixed teaches people to ignore it.
+      - name: Close the drift issue when clean
+        if: steps.plan.outputs.status == 'clean'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const env = '${{ matrix.environment }}';
+            const title = `Drift detected in \`${env}\``;
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'drift',
+            });
+            const match = existing.data.find(i => i.title === title);
+            if (match) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: match.number,
+                body: `Resolved — the scheduled plan is clean as of ${new Date().toISOString()}.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: match.number,
+                state: 'closed',
+              });
+            }
+
+      - name: Fail the run on drift
+        if: steps.plan.outputs.status != 'clean'
+        run: |
+          echo "::error::Drift check finished with status ${{ steps.plan.outputs.status }}"
+          exit 1

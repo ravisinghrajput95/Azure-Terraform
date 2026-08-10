@@ -34,7 +34,13 @@ locals {
     keyvault = "privatelink.vaultcore.azure.net"
 
     # Caching
+    #
+    # Classic Azure Cache for Redis and Azure Managed Redis use DIFFERENT
+    # zones. Classic is retiring, so managed_redis is the one new deployments
+    # need; supplying the classic zone to a Managed Redis private endpoint
+    # registers no usable record and the hostname resolves publicly.
     redis            = "privatelink.redis.cache.windows.net"
+    managed_redis    = "privatelink.redis.azure.net"
     redis_enterprise = "privatelink.redisenterprise.cache.azure.net"
 
     # Messaging

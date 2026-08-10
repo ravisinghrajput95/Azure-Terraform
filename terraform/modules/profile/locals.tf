@@ -74,11 +74,17 @@ locals {
       sql_backup_retention_days      = 7
       sql_enable_long_term_retention = false
 
-      # Redis has no free tier. Basic C0 is roughly $16/month and is the first
-      # thing to disable if credit runs short.
-      enable_redis   = true
-      redis_sku_name = "Basic"
-      redis_capacity = 0
+      # Azure Cache for Redis is RETIRING — its API rejects creation outright.
+      # Azure Managed Redis replaces it, and Balanced_B0 at roughly $13/month
+      # is slightly cheaper than the classic Basic C0 it supersedes.
+      #
+      # High availability off in dev: it roughly halves the cost and removes
+      # the SLA, which is acceptable where the cache is a pure accelerator and
+      # a cold start is survivable. Redis has no free tier and remains the
+      # first component worth disabling if credit runs short.
+      enable_redis            = true
+      redis_sku_name          = "Balanced_B0"
+      redis_high_availability = false
 
       storage_replication_type  = "LRS"
       storage_enable_versioning = false
@@ -167,9 +173,9 @@ locals {
       sql_backup_retention_days      = 7
       sql_enable_long_term_retention = false
 
-      enable_redis   = true
-      redis_sku_name = "Standard"
-      redis_capacity = 1
+      enable_redis            = true
+      redis_sku_name          = "Balanced_B1"
+      redis_high_availability = true
 
       storage_replication_type  = "LRS"
       storage_enable_versioning = true
@@ -242,10 +248,10 @@ locals {
       sql_backup_retention_days      = 35
       sql_enable_long_term_retention = true
 
-      # Zone redundancy for Redis requires the Premium tier.
-      enable_redis   = true
-      redis_sku_name = "Premium"
-      redis_capacity = 1
+      # High availability is what carries the Managed Redis SLA.
+      enable_redis            = true
+      redis_sku_name          = "Balanced_B3"
+      redis_high_availability = true
 
       storage_replication_type  = "GZRS"
       storage_enable_versioning = true
@@ -322,7 +328,7 @@ locals {
     sql_enable_long_term_retention = local.o.sql_enable_long_term_retention != null ? local.o.sql_enable_long_term_retention : local.selected.sql_enable_long_term_retention
     enable_redis                   = local.o.enable_redis != null ? local.o.enable_redis : local.selected.enable_redis
     redis_sku_name                 = local.o.redis_sku_name != null ? local.o.redis_sku_name : local.selected.redis_sku_name
-    redis_capacity                 = local.o.redis_capacity != null ? local.o.redis_capacity : local.selected.redis_capacity
+    redis_high_availability        = local.o.redis_high_availability != null ? local.o.redis_high_availability : local.selected.redis_high_availability
     storage_replication_type       = local.o.storage_replication_type != null ? local.o.storage_replication_type : local.selected.storage_replication_type
     storage_enable_versioning      = local.o.storage_enable_versioning != null ? local.o.storage_enable_versioning : local.selected.storage_enable_versioning
 
@@ -435,12 +441,20 @@ locals {
   }
   cost_sql = lookup(local.sql_monthly_costs, local.profile.sql_sku_name, 400)
 
+  # Azure Managed Redis, approximate Central US list price. High availability
+  # roughly doubles the node count and therefore the rate.
   redis_monthly_costs = {
-    Basic    = 16
-    Standard = 75
-    Premium  = 412
+    Balanced_B0         = 13
+    Balanced_B1         = 26
+    Balanced_B3         = 53
+    Balanced_B5         = 105
+    MemoryOptimized_M10 = 130
+    ComputeOptimized_X3 = 95
+    FlashOptimized_A250 = 320
   }
-  cost_redis = local.profile.enable_redis ? lookup(local.redis_monthly_costs, local.profile.redis_sku_name, 75) : 0
+  cost_redis = local.profile.enable_redis ? (
+    lookup(local.redis_monthly_costs, local.profile.redis_sku_name, 50) * (local.profile.redis_high_availability ? 2 : 1)
+  ) : 0
 
   cost_ddos = local.profile.enable_ddos_protection ? 2944 : 0
 
@@ -562,6 +576,7 @@ locals {
     local.profile.key_vault_purge_protection ? [] : ["Production requires key_vault_purge_protection. Without it, a deleted vault and its keys are unrecoverable."],
     local.profile.enable_resource_locks ? [] : ["Production requires enable_resource_locks."],
     local.profile.data_plane_public_access_enabled ? ["Production must not expose data services on a public endpoint. Set data_plane_public_access_enabled = false; access is via private endpoint only."] : [],
+    (local.profile.enable_redis && !local.profile.redis_high_availability) ? ["Production requires redis_high_availability. Without it the cache is a single node with no SLA, and a host fault loses it entirely."] : [],
     local.profile.sql_backup_retention_days >= 35 ? [] : ["Production requires sql_backup_retention_days of at least 35, got ${local.profile.sql_backup_retention_days}."],
     local.profile.log_daily_quota_gb > 0 ? ["Production must not set a Log Analytics daily quota (log_daily_quota_gb = ${local.profile.log_daily_quota_gb}). A cap drops ingestion once hit, including the security signals an investigation depends on. Use -1."] : [],
   ) : []

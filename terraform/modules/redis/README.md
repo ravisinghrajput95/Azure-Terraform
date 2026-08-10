@@ -1,0 +1,209 @@
+# Module: `redis`
+
+**Azure Managed Redis** (`Microsoft.Cache/redisEnterprise`) with access keys
+disabled, TLS-only transport, no public endpoint, and a private endpoint.
+
+---
+
+## Classic Azure Cache for Redis is retiring
+
+This module originally targeted `azurerm_redis_cache`. That resource can no
+longer create instances — the Azure API rejects it outright:
+
+```
+BadRequest: Azure Cache for Redis is retiring, create Azure Managed Redis
+instance instead. https://aka.ms/AzureCacheForRedisRetirement
+```
+
+So the classic Basic / Standard / Premium tiers and their `C` and `P` families
+are simply unavailable for new deployments. Azure Managed Redis is the
+replacement, and three differences matter more than the resource rename:
+
+| | Classic | Managed Redis |
+|---|---|---|
+| SKU naming | `Basic` + family `C`, capacity `0` | `Balanced_B0` |
+| Private DNS zone | `privatelink.redis.cache.windows.net` | **`privatelink.redis.azure.net`** |
+| Default port | 6380 | **10000** |
+| Private endpoint subresource | `redisCache` | **`redisEnterprise`** |
+
+The DNS zone is the dangerous one. Supplying the classic zone to a Managed
+Redis private endpoint registers no usable record, so the hostname resolves to
+its **public** address from inside the VNet — no error, at any layer. A
+precondition names this specifically.
+
+The port catches people out too: a client configured for 6380 simply will not
+connect.
+
+**Managed Redis is slightly cheaper at the small end** — `Balanced_B0` is
+roughly $13/month against ~$16 for the classic Basic C0 it supersedes.
+
+---
+
+## Availability is `high_availability_enabled`, not the tier
+
+Unlike classic Redis, where availability was tied to Basic/Standard/Premium,
+Managed Redis exposes it as a flag on every SKU.
+
+`high_availability_enabled = true` replicates across nodes and is what carries
+the SLA. Setting it false roughly halves the cost and **removes the SLA
+entirely** — a host fault or a routine platform restart loses the whole cache,
+with nothing to fail over to.
+
+The `availability_summary` output states this in plain language rather than
+leaving it implicit:
+
+```
+Balanced_B0 with high availability DISABLED: single node, NO SLA. A host
+fault or restart loses the entire cache with nothing to fail over to.
+Suitable only where the cache is a pure accelerator and a cold start is
+survivable.
+```
+
+dev runs with HA off as a deliberate cost decision. test and prod enable it,
+and a production guardrail in the `profile` module rejects turning it off.
+
+`FlashOptimized` always replicates; HA cannot be disabled on it, and a
+precondition catches the attempt.
+
+---
+
+## Access keys disabled
+
+Managed Redis access keys have the same weaknesses as storage account keys:
+static, never expiring, impossible to scope, and total control of the cache.
+
+`access_keys_authentication_enabled = false` is the default. Clients
+authenticate with a managed identity through an **access policy assignment**,
+which is the Managed Redis equivalent of a data-plane role assignment.
+
+Two consequences:
+
+- With keys off, a principal **without** an assignment cannot connect at all. A
+  cache with no assignments is created successfully and is unreachable by
+  everything — a precondition rejects that combination.
+- Any library or sidecar still passing a key stops working the moment keys are
+  disabled. This is a client-side change, not only an infrastructure one.
+
+The assignment resource takes only the cache and the principal — there is no
+per-assignment name and no policy selector, so it grants the built-in full data
+access policy and nothing narrower is expressible today.
+
+Access keys are deliberately **not exported**, for the same reason as in the
+`storage` module.
+
+---
+
+## Usage
+
+```hcl
+module "redis" {
+  source = "../../modules/redis"
+  count  = module.profile.enable_redis ? 1 : 0
+
+  name                = module.naming.redis_name
+  resource_group_name = module.resource_group.names["data"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  sku_name                  = module.profile.profile.redis_sku_name
+  high_availability_enabled = module.profile.profile.redis_high_availability
+
+  access_keys_authentication_enabled = false
+  client_protocol                    = "Encrypted"
+  public_network_access_enabled      = false
+
+  access_policy_assignments = {
+    for tier, principal_id in module.managed_identity.principal_ids :
+    "tier-${tier}" => { principal_id = principal_id }
+  }
+
+  create_private_endpoint    = true
+  private_endpoint_subnet_id = module.networking.subnet_ids["snet-pep-dev-cus"]
+  private_endpoint_name      = "pep-redis-cloudcart-dev-cus-001"
+  private_dns_zone_ids       = [module.private_dns.zone_ids_by_service["managed_redis"]]
+}
+```
+
+## Key inputs
+
+| Name | Default | Description |
+|---|---|---|
+| `sku_name` | `"Balanced_B0"` | `<Family>_<Size>` — Balanced, MemoryOptimized, ComputeOptimized, FlashOptimized. |
+| `high_availability_enabled` | `true` | Carries the SLA. |
+| `access_keys_authentication_enabled` | `false` | |
+| `access_policy_assignments` | `{}` | Required when keys are off. |
+| `client_protocol` | `"Encrypted"` | Never Plaintext. |
+| `clustering_policy` | `"EnterpriseCluster"` | Changes the client contract. |
+| `eviction_policy` | `"VolatileLRU"` | See below. |
+| `port` | `null` | Azure default is **10000**, not 6380. |
+| `public_network_access_enabled` | `false` | No IP allowlist exists — blunt on/off. |
+| `create_private_endpoint` | `true` | Static bool. |
+| `private_dns_zone_ids` | `[]` | Must be the **managed_redis** zone. |
+
+## Outputs
+
+`id`, `name`, `hostname`, `sku_name`, `connection_guidance`,
+`high_availability_enabled`, `availability_summary`, `access_keys_enabled`,
+`access_policy_assignment_ids`, `reachable_from`, `private_endpoint_id`,
+`private_endpoint_ip`
+
+---
+
+## Design notes
+
+**`eviction_policy` defaults to `VolatileLRU`.** It evicts only keys carrying a
+TTL, which is safe when the cache also holds keys that must not vanish.
+`AllKeysLRU` may evict anything; `NoEviction` makes writes fail instead of
+evicting, correct only when the cache is a store rather than a cache.
+
+**`clustering_policy` is not a transparent choice.** `OSSCluster` exposes the
+standard Redis Cluster API and requires a cluster-aware client.
+`EnterpriseCluster` presents a single endpoint and hides sharding, which is
+simpler for clients that are not cluster-aware. This changes the client
+contract, so it is not a capacity dial.
+
+**`public_network_access` is a string enum**, not a boolean — unlike almost
+every other resource in this platform. The module takes a bool and converts.
+
+**Managed Redis has no IP allowlist.** Unlike Key Vault and Storage, public
+access is all-or-nothing: either the internet can reach the endpoint or only
+the private endpoint can. dev therefore disables it entirely, since nothing in
+this platform needs to reach the cache from an operator machine — there are no
+secrets to manage and no containers to create.
+
+---
+
+## Cost
+
+| SKU | Approximate (Central US list) |
+|---|---|
+| `Balanced_B0` | ~$13/month |
+| `Balanced_B1` | ~$26/month |
+| `Balanced_B3` | ~$53/month |
+| `MemoryOptimized_M10` | ~$130/month |
+| Private endpoint | ~$7.30/month |
+
+High availability roughly doubles the node count and therefore the rate.
+
+There is no free tier. On a credit-limited subscription, Redis remains the
+first component worth disabling — `enable_redis = false` in the profile removes
+it entirely.
+
+---
+
+## Deployed state
+
+`dev` — `Balanced_B0`, high availability off, TLS required, access keys
+disabled with Entra access policy assignments for the app and biz tiers, no
+public endpoint, private endpoint in `snet-pep-dev-cus`.
+
+---
+
+## Reference
+
+Generated by terraform-docs. The prose above is hand-written; everything
+between the markers below is regenerated by CI and should not be edited by
+hand.
+
+<!-- BEGIN_TF_DOCS -->
+<!-- END_TF_DOCS -->
