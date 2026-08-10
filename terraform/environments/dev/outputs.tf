@@ -131,3 +131,22 @@ output "nsgs_without_explicit_deny" {
   description = "NSGs relying on Azure's built-in AllowVnetInBound, which permits all intra-VNet traffic. Should always be empty."
   value       = setsubtract(toset(keys(module.nsg.ids)), toset(module.nsg.nsgs_with_explicit_inbound_deny))
 }
+
+################################################################################
+# Routing
+################################################################################
+
+output "route_table_ids" {
+  description = "Map of route table name to resource ID."
+  value       = module.route_table.ids
+}
+
+output "route_tables_with_default_route" {
+  description = "Route tables forcing egress through a virtual appliance. Empty in dev: a NAT Gateway attaches to the subnet directly and is not a UDR next hop."
+  value       = module.route_table.tables_with_default_route
+}
+
+output "route_table_subnets" {
+  description = "Map of route table name to the subnet names it is applied to."
+  value       = module.route_table.associated_subnet_names
+}

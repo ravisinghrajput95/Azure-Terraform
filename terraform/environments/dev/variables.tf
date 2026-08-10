@@ -76,3 +76,13 @@ variable "profile_overrides" {
   type        = any
   default     = {}
 }
+
+################################################################################
+# Firewall
+################################################################################
+
+variable "firewall_private_ip" {
+  description = "Private IP of the Azure Firewall, used as the VirtualAppliance next hop for the workload route table. Only consumed when the profile's egress_strategy is \"firewall\"; dev uses a NAT Gateway and leaves this null. Taken as a variable rather than read from the firewall module so that route tables can be applied before, or independently of, the firewall."
+  type        = string
+  default     = null
+}

@@ -234,3 +234,68 @@ module "diagnostics_nsg" {
   target_resource_id         = each.value
   log_analytics_workspace_id = module.log_analytics.id
 }
+
+################################################################################
+# Phase 2 — route tables
+#
+# The routing set depends entirely on how egress is provided, which is why
+# module.profile.egress_strategy exists as a string rather than a boolean.
+#
+#   "firewall"     0.0.0.0/0 -> VirtualAppliance at the firewall's private IP.
+#                  Every workload subnet is forced through inspection.
+#
+#   "nat_gateway"  NO routes at all. A NAT Gateway attaches directly to the
+#                  subnet and is NOT a UDR next hop — adding a 0.0.0.0/0 route
+#                  pointing anywhere would override it and break egress.
+#
+# dev uses NAT Gateway, so this table is deliberately empty. It is still
+# created and attached, because disabling BGP route propagation is itself a
+# control: without it, an ExpressRoute or VPN gateway attached later could
+# advertise a more specific route that diverts egress, defeating the intended
+# path with no change to this configuration.
+#
+# AzureBastionSubnet is deliberately NOT associated. A default route there
+# breaks Bastion, and the module rejects the combination outright.
+################################################################################
+
+module "route_table" {
+  source = "../../modules/route-table"
+
+  resource_group_name = module.resource_group.names["net"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  # The Application Gateway subnet name is added to the reserved list because
+  # AppGW v2 requires direct control-plane access; a default route there makes
+  # the gateway report permanently unhealthy.
+  subnets_forbidding_default_route = [
+    "AzureBastionSubnet",
+    "AzureFirewallSubnet",
+    "AzureFirewallManagementSubnet",
+    "GatewaySubnet",
+    "RouteServerSubnet",
+    "snet-agw-${local.environment}-${module.naming.location_short}",
+  ]
+
+  route_tables = {
+    (module.naming.names.route_table_workload) = {
+      bgp_route_propagation_enabled = false
+
+      routes = module.profile.egress_strategy == "firewall" ? {
+        "Default-To-Firewall" = {
+          address_prefix         = "0.0.0.0/0"
+          next_hop_type          = "VirtualAppliance"
+          next_hop_in_ip_address = var.firewall_private_ip
+        }
+      } : {}
+
+      subnet_ids = [
+        module.networking.subnet_ids[local.app_subnet],
+        module.networking.subnet_ids[local.biz_subnet],
+        module.networking.subnet_ids[local.db_subnet],
+        module.networking.subnet_ids[local.pep_subnet],
+        module.networking.subnet_ids[local.mgmt_subnet],
+      ]
+    }
+  }
+}
