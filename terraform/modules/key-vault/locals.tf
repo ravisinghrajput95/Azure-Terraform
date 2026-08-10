@@ -8,7 +8,7 @@
 ################################################################################
 
 locals {
-  has_private_endpoint = var.private_endpoint_subnet_id != null
+  has_private_endpoint = var.create_private_endpoint
 
   is_unreachable = !var.public_network_access_enabled && !local.has_private_endpoint
 

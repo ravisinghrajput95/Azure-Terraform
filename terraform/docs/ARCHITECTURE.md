@@ -337,6 +337,56 @@ repository structure — they are foundational, so they are listed explicitly.
 
 ---
 
+## 6a. Region selection is a subscription constraint, not a preference
+
+The platform was originally planned for **East US**. It runs in **Central US**
+because Azure SQL Database provisioning is **restricted in East US on this
+subscription**:
+
+```
+Status: "ProvisioningDisabled"
+Message: "Provisioning is restricted in this region."
+```
+
+This is a per-subscription restriction, not a capacity shortage, and it does
+not resolve on its own. Trial subscriptions generally cannot get an exception
+granted.
+
+Seven regions were probed by creating a throwaway logical server, which is free
+and takes under a minute:
+
+| Region | Azure SQL provisioning |
+|---|---|
+| East US | Blocked — `ProvisioningDisabled` |
+| East US 2 | Blocked — `RegionDoesNotAllowProvisioning` |
+| West US 2 | Blocked |
+| West Europe | Blocked — `RegionDoesNotAllowProvisioning` |
+| **Central US** | **Allowed** — selected |
+| Central India | Allowed — subscription home region |
+| Southeast Asia | Allowed |
+
+Central US was chosen over Central India to keep the platform in a US region
+with a comparable latency profile, and it carries the same 4 vCPU trial quota.
+
+**The lesson worth carrying forward:** verify that every service the
+architecture depends on can actually be provisioned in the target region *for
+the target subscription*, before building anything. Regional availability
+published in documentation is necessary but not sufficient — subscription-level
+restrictions are invisible until an apply fails.
+
+The cost of discovering this at module 15 was a rebuild of 28 resources with no
+data in them. Discovering it after compute, cache and gateway existed would
+have been materially worse. This is why `location` is a variable consumed by
+`naming` rather than a literal anywhere in the modules: the move was a one-line
+change plus an apply.
+
+Splitting the database into an allowed region while leaving the rest in East US
+was rejected — the application tier would cross regions on every query, which
+is the wrong shape for a three-tier platform and adds cross-region egress
+charges to every request.
+
+---
+
 ## 7. Open decisions — needed before module 1
 
 **Decision A — Relationship to the existing `cloudcart` config.**

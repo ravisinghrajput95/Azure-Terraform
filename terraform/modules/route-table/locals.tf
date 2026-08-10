@@ -13,12 +13,18 @@ locals {
     }
   ]...)
 
+  # Keyed by "<table>/<subnet-name>". Both components are static map keys, so
+  # the for_each key set is known at plan time even from an empty state — a
+  # key derived from a subnet ID would be unknown until apply and fail the plan
+  # for any fresh environment.
   associations = merge([
     for table_name, table in var.route_tables : {
-      for subnet_id in table.subnet_ids :
-      # Keyed by subnet ID rather than by index, so removing one association
-      # does not re-index and recreate the others.
-      subnet_id => table_name
+      for subnet_name, subnet_id in table.subnets :
+      "${table_name}/${subnet_name}" => {
+        table_name  = table_name
+        subnet_name = subnet_name
+        subnet_id   = subnet_id
+      }
     }
   ]...)
 }
@@ -36,17 +42,14 @@ locals {
     if route.address_prefix == "0.0.0.0/0"
   ])
 
-  # subnet_id => subnet name
-  associated_subnet_names = {
-    for subnet_id, table_name in local.associations :
-    subnet_id => element(split("/", subnet_id), length(split("/", subnet_id)) - 1)
-  }
-
+  # Subnet names come straight from the map keys, so this check resolves at
+  # PLAN time. Extracting a name from a subnet ID would defer it to apply,
+  # which is exactly when a bad route has already been sent to Azure.
   forbidden_default_route_violations = sort([
-    for subnet_id, table_name in local.associations :
-    "${local.associated_subnet_names[subnet_id]} would receive a 0.0.0.0/0 route from ${table_name}"
-    if contains(local.tables_with_default_route, table_name)
-    && contains(var.subnets_forbidding_default_route, local.associated_subnet_names[subnet_id])
+    for key, assoc in local.associations :
+    "${assoc.subnet_name} would receive a 0.0.0.0/0 route from ${assoc.table_name}"
+    if contains(local.tables_with_default_route, assoc.table_name)
+    && contains(var.subnets_forbidding_default_route, assoc.subnet_name)
   ])
 }
 
@@ -60,25 +63,14 @@ locals {
 ################################################################################
 
 locals {
-  subnet_claims = {
-    for pair in flatten([
-      for table_name, table in var.route_tables : [
-        for subnet_id in table.subnet_ids : {
-          subnet_id  = subnet_id
-          table_name = table_name
-        }
-      ]
-    ]) : "${pair.table_name}|${pair.subnet_id}" => pair
-  }
-
   claims_by_subnet = {
-    for key, claim in local.subnet_claims :
-    claim.subnet_id => claim.table_name...
+    for key, assoc in local.associations :
+    assoc.subnet_name => assoc.table_name...
   }
 
   duplicate_subnet_claims = sort([
-    for subnet_id, table_names in local.claims_by_subnet :
-    "${element(split("/", subnet_id), length(split("/", subnet_id)) - 1)} is claimed by: ${join(", ", sort(table_names))}"
+    for subnet_name, table_names in local.claims_by_subnet :
+    "${subnet_name} is claimed by: ${join(", ", sort(table_names))}"
     if length(table_names) > 1
   ])
 }

@@ -66,8 +66,8 @@ resource "azurerm_route" "this" {
 resource "azurerm_subnet_route_table_association" "this" {
   for_each = local.associations
 
-  subnet_id      = each.key
-  route_table_id = azurerm_route_table.this[each.value].id
+  subnet_id      = each.value.subnet_id
+  route_table_id = azurerm_route_table.this[each.value.table_name].id
 
   # Routes must exist before the table is attached. Associating an empty table
   # that is about to receive a default route would briefly leave the subnet

@@ -3,7 +3,7 @@
 ################################################################################
 
 locals {
-  has_private_endpoints = var.private_endpoint_subnet_id != null && length(var.private_endpoint_subresources) > 0
+  has_private_endpoints = var.create_private_endpoints && length(var.private_endpoint_subresources) > 0
 
   is_unreachable = !var.public_network_access_enabled && !local.has_private_endpoints
 

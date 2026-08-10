@@ -21,11 +21,15 @@ locals {
     }
   ]...)
 
-  # Only NSGs that named a subnet get an association.
+  # Filtered on attach_to_subnet, a STATIC boolean — not on `subnet_id !=
+  # null`. Filtering on the subnet ID makes the for_each KEY SET depend on a
+  # value unknown until apply, so the plan fails from an empty state while
+  # succeeding incrementally. That is the shape of bug that works in the
+  # environment you built it in and breaks in the next one.
   associations = {
     for nsg_name, nsg in var.network_security_groups :
     nsg_name => nsg.subnet_id
-    if nsg.subnet_id != null
+    if nsg.attach_to_subnet
   }
 }
 

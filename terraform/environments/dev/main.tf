@@ -289,13 +289,16 @@ module "route_table" {
         }
       } : {}
 
-      subnet_ids = [
-        module.networking.subnet_ids[local.app_subnet],
-        module.networking.subnet_ids[local.biz_subnet],
-        module.networking.subnet_ids[local.db_subnet],
-        module.networking.subnet_ids[local.pep_subnet],
-        module.networking.subnet_ids[local.mgmt_subnet],
-      ]
+      # Keyed by subnet NAME so the for_each key set is known at plan time and
+      # the forbidden-default-route check compares names rather than parsing
+      # them out of IDs that are unknown until apply.
+      subnets = {
+        (local.app_subnet)  = module.networking.subnet_ids[local.app_subnet]
+        (local.biz_subnet)  = module.networking.subnet_ids[local.biz_subnet]
+        (local.db_subnet)   = module.networking.subnet_ids[local.db_subnet]
+        (local.pep_subnet)  = module.networking.subnet_ids[local.pep_subnet]
+        (local.mgmt_subnet) = module.networking.subnet_ids[local.mgmt_subnet]
+      }
     }
   }
 }
@@ -574,5 +577,73 @@ module "diagnostics_storage" {
   # resource itself exposes only metrics. Blob logs live at
   # <account-id>/blobServices/default.
   target_resource_id         = "${module.storage.id}/blobServices/default"
+  log_analytics_workspace_id = module.log_analytics.id
+}
+
+################################################################################
+# Phase 4 — Azure SQL
+#
+# The strongest security position in this platform: azuread_authentication_only
+# means there is NO SQL login. No password is generated, so none is written to
+# Terraform state in plaintext, none is stored in Key Vault, none is rotated,
+# and none can leak. That is stronger than "no hardcoded secrets" — the secret
+# does not exist.
+#
+# The trade-off is real: database access is then governed by Entra ID group
+# membership, which lives outside this repository. Granting access becomes a
+# directory operation rather than a Terraform change.
+#
+# dev uses GP_S_Gen5_1 — serverless, verified available in eastus on this
+# subscription. It bills per second of compute and pauses after 60 minutes
+# idle, so a database used a few hours a day costs close to storage alone. The
+# cost is a cold start of several seconds on the first connection after a
+# pause.
+################################################################################
+
+module "sql" {
+  source = "../../modules/sql"
+
+  server_name         = module.naming.sql_server_name
+  database_name       = module.naming.names.sql_database
+  resource_group_name = module.resource_group.names["data"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  # Defaults to the deploying user when no group is supplied. In a shared
+  # subscription this should be a group — see the administrator_is_individual
+  # output, which flags the weakness rather than silently accepting it.
+  entra_administrator_login     = coalesce(var.sql_entra_admin_login, data.azurerm_client_config.current.object_id)
+  entra_administrator_object_id = coalesce(var.sql_entra_admin_object_id, data.azurerm_client_config.current.object_id)
+  entra_administrator_is_group  = var.sql_entra_admin_is_group
+  azuread_authentication_only   = true
+
+  sku_name                    = module.profile.profile.sql_sku_name
+  zone_redundant              = module.profile.profile.sql_zone_redundant
+  short_term_retention_days   = module.profile.profile.sql_backup_retention_days
+  long_term_retention_enabled = module.profile.profile.sql_enable_long_term_retention
+
+  max_size_gb          = 32
+  storage_account_type = "Local"
+  geo_backup_enabled   = false
+
+  public_network_access_enabled = module.profile.data_plane_public_access_enabled
+
+  allowed_ip_rules = {
+    for index, ip in var.deployer_ip_addresses :
+    "operator-${index}" => { start_ip = ip, end_ip = ip }
+  }
+
+  private_endpoint_subnet_id = module.networking.subnet_ids[local.pep_subnet]
+  private_endpoint_name      = "pep-sql-${module.naming.base}-001"
+  private_dns_zone_ids       = [module.private_dns.zone_ids_by_service["sql"]]
+}
+
+module "diagnostics_sql" {
+  source = "../../modules/diagnostics"
+
+  # Diagnostics attach to the DATABASE, not the logical server. The server
+  # resource exposes almost nothing; the query, wait and deadlock telemetry
+  # worth having lives on the database.
+  target_resource_id         = module.sql.database_id
   log_analytics_workspace_id = module.log_analytics.id
 }

@@ -1,6 +1,6 @@
 subscription_id = "<subscription-guid>"
 workload        = "cloudcart"
-location        = "eastus"
+location        = "centralus"
 
 owner       = "platform-team@example.com"
 cost_center = "CC-DEV-001"

@@ -241,6 +241,12 @@ variable "allowed_subnet_ids" {
 # sub-resources explicitly requested.
 ################################################################################
 
+variable "create_private_endpoints" {
+  description = "Whether to create private endpoints. A STATIC boolean: deriving it from `private_endpoint_subnet_id != null` makes for_each depend on a value unknown until apply, breaking any plan from an empty state."
+  type        = bool
+  default     = true
+}
+
 variable "private_endpoint_subnet_id" {
   description = "Subnet for private endpoints. Null skips creation, which is only safe while the public endpoint remains enabled."
   type        = string

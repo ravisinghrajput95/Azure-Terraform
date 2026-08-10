@@ -138,6 +138,12 @@ variable "allowed_subnet_ids" {
 # Private endpoint
 ################################################################################
 
+variable "create_private_endpoint" {
+  description = "Whether to create a private endpoint. A STATIC boolean, deliberately: deriving this from `private_endpoint_subnet_id != null` makes count depend on a value that is unknown until apply, which fails any plan from an empty state — so the module would work incrementally and break for a fresh environment."
+  type        = bool
+  default     = true
+}
+
 variable "private_endpoint_subnet_id" {
   description = "Subnet for the vault's private endpoint. Null skips creation, which is only safe when the public endpoint remains enabled."
   type        = string

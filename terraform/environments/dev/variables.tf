@@ -96,3 +96,25 @@ variable "deployer_ip_addresses" {
   type        = list(string)
   default     = []
 }
+
+################################################################################
+# SQL administration
+################################################################################
+
+variable "sql_entra_admin_login" {
+  description = "Display name or UPN of the Entra principal administering the SQL server. Defaults to the deploying user, which is acceptable in a personal subscription and is a governance weakness anywhere else — prefer a group so administration is a role rather than a person."
+  type        = string
+  default     = null
+}
+
+variable "sql_entra_admin_object_id" {
+  description = "Object ID of the Entra SQL administrator. Defaults to the deploying user."
+  type        = string
+  default     = null
+}
+
+variable "sql_entra_admin_is_group" {
+  description = "Whether the SQL administrator principal is a group rather than an individual."
+  type        = bool
+  default     = false
+}

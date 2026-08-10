@@ -68,6 +68,11 @@ resource "azurerm_key_vault" "this" {
     }
 
     precondition {
+      condition     = !var.create_private_endpoint || var.private_endpoint_subnet_id != null
+      error_message = "create_private_endpoint is true but private_endpoint_subnet_id is null."
+    }
+
+    precondition {
       condition = !local.private_endpoint_without_dns
       error_message = join(" ", [
         "A private endpoint is configured but private_dns_zone_ids is empty.",

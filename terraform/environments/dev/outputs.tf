@@ -245,3 +245,32 @@ output "storage_private_endpoint_ips" {
   description = "Map of sub-resource to private IP inside the VNet."
   value       = module.storage.private_endpoint_ips
 }
+
+################################################################################
+# SQL
+################################################################################
+
+output "sql_server_fqdn" {
+  description = "SQL server FQDN. Resolves to the private endpoint inside the VNet and to the firewalled public endpoint from the operator allowlist."
+  value       = module.sql.server_fqdn
+}
+
+output "sql_connection_guidance" {
+  description = "How to connect. No password, because no SQL login exists — applications present a managed identity."
+  value       = module.sql.connection_guidance
+}
+
+output "sql_reachable_from" {
+  description = "Who can reach the SQL server, in plain language."
+  value       = module.sql.reachable_from
+}
+
+output "sql_backup_summary" {
+  description = "Effective backup posture."
+  value       = module.sql.backup_summary
+}
+
+output "sql_admin_is_individual" {
+  description = "True when the Entra SQL administrator is a named user rather than a group — a governance weakness worth resolving in any shared subscription."
+  value       = module.sql.administrator_is_individual
+}

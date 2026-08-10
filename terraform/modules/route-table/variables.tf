@@ -38,14 +38,17 @@ variable "route_tables" {
           is still meaningful, because disabling BGP propagation is itself a
           control.
 
-      subnet_ids
-          Subnets to associate. Azure permits at most ONE route table per
-          subnet.
+      subnets
+          Map of subnet NAME to subnet ID. A map keyed by name, not a list of
+          IDs, for two reasons: the key set stays known at plan time so
+          for_each resolves from an empty state, and the forbidden-default-route
+          check can compare names without parsing them out of IDs that are
+          themselves unknown until apply.
   EOT
 
   type = map(object({
     bgp_route_propagation_enabled = optional(bool, false)
-    subnet_ids                    = optional(list(string), [])
+    subnets                       = optional(map(string), {})
 
     routes = optional(map(object({
       address_prefix         = string

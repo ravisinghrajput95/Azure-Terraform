@@ -17,17 +17,17 @@ output "names" {
 ################################################################################
 
 output "associations" {
-  description = "Map of subnet ID to the route table applied to it."
+  description = "Map of \"<table>/<subnet-name>\" to its association detail."
   value       = local.associations
 }
 
 output "associated_subnet_names" {
-  description = "Map of route table name to the list of subnet names it is applied to, which is more readable than resource IDs when reviewing routing."
+  description = "Map of route table name to the subnet names it is applied to. Names rather than resource IDs, because routing is reviewed by humans."
   value = {
     for table_name in keys(var.route_tables) :
     table_name => sort([
-      for subnet_id, name in local.associated_subnet_names : name
-      if local.associations[subnet_id] == table_name
+      for key, assoc in local.associations : assoc.subnet_name
+      if assoc.table_name == table_name
     ])
   }
 }

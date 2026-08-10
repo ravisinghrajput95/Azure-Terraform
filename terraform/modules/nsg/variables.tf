@@ -39,7 +39,8 @@ variable "network_security_groups" {
   EOT
 
   type = map(object({
-    subnet_id = optional(string)
+    subnet_id        = optional(string)
+    attach_to_subnet = optional(bool, true)
 
     rules = map(object({
       priority    = number
