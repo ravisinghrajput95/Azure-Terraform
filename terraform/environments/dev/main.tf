@@ -100,3 +100,22 @@ module "log_analytics" {
   retention_in_days = module.profile.profile.log_retention_days
   daily_quota_gb    = module.profile.profile.log_daily_quota_gb
 }
+
+################################################################################
+# Phase 1 — diagnostics on the workspace itself
+#
+# The workspace audits its own access and query activity. Collecting that is
+# what makes "who read the logs" answerable, which matters precisely when
+# someone is investigating whether logs were tampered with.
+#
+# This is also the first exercise of the shared diagnostics module. Every
+# resource from Phase 2 onward routes through the same module rather than
+# declaring its own diagnostic setting.
+################################################################################
+
+module "diagnostics_log_analytics" {
+  source = "../../modules/diagnostics"
+
+  target_resource_id         = module.log_analytics.id
+  log_analytics_workspace_id = module.log_analytics.id
+}
