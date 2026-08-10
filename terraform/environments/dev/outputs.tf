@@ -221,3 +221,27 @@ output "key_vault_granted_principals" {
   description = "Who holds which role on the vault — a single artefact for reviewing secret access."
   value       = module.key_vault.granted_principal_ids
 }
+
+################################################################################
+# Storage
+################################################################################
+
+output "storage_account_name" {
+  description = "Storage account name."
+  value       = module.storage.name
+}
+
+output "storage_blob_endpoint" {
+  description = "Blob endpoint. Resolves privately from inside the VNet, and to the firewalled public endpoint from the operator allowlist."
+  value       = module.storage.primary_blob_endpoint
+}
+
+output "storage_reachable_from" {
+  description = "Who can reach the storage data plane, in plain language."
+  value       = module.storage.reachable_from
+}
+
+output "storage_private_endpoint_ips" {
+  description = "Map of sub-resource to private IP inside the VNet."
+  value       = module.storage.private_endpoint_ips
+}

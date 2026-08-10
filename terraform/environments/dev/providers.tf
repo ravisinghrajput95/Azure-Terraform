@@ -15,6 +15,12 @@
 provider "azurerm" {
   subscription_id = var.subscription_id
 
+  # Authenticate storage DATA-plane operations with the caller's Entra
+  # identity rather than an account key. Required, because the storage module
+  # sets shared_access_key_enabled = false — without this flag the provider
+  # would try to fetch a key that does not exist.
+  storage_use_azuread = true
+
   features {
     resource_group {
       # Refuse to delete a resource group that still contains resources

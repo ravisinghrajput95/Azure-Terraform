@@ -489,3 +489,90 @@ module "diagnostics_key_vault" {
   target_resource_id         = module.key_vault.id
   log_analytics_workspace_id = module.log_analytics.id
 }
+
+################################################################################
+# Phase 3 — Storage
+#
+# Same reachability model as Key Vault: private endpoint for in-VNet traffic,
+# plus a public endpoint that denies by default and permits only the operator
+# IP, driven by the profile.
+#
+# The account-specific control is shared_access_key_enabled = false. Storage
+# account keys are the most frequently leaked Azure credential — static, never
+# expiring, impossible to scope to a container or an operation, and granting
+# total control of the account to anyone holding one. They end up in connection
+# strings, CI variables, appsettings files and support tickets.
+#
+# Disabling them has a consequence worth stating: every data-plane caller,
+# including Terraform, must hold a DATA-plane RBAC role. Subscription Owner is
+# not sufficient — Owner is a control-plane role and receives 403 on a
+# container list.
+#
+# allow_nested_items_to_be_public = false forecloses anonymous blob access
+# account-wide regardless of any per-container setting.
+################################################################################
+
+module "storage" {
+  source = "../../modules/storage"
+
+  name                = module.naming.storage_account_name
+  resource_group_name = module.resource_group.names["data"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  account_replication_type = module.profile.profile.storage_replication_type
+  blob_versioning_enabled  = module.profile.profile.storage_enable_versioning
+
+  shared_access_key_enabled = false
+
+  public_network_access_enabled = module.profile.data_plane_public_access_enabled
+  network_rules_default_action  = "Deny"
+  allowed_ip_rules              = var.deployer_ip_addresses
+
+  private_endpoint_subnet_id    = module.networking.subnet_ids[local.pep_subnet]
+  private_endpoint_name_prefix  = "pep-st-${module.naming.base}"
+  private_endpoint_subresources = ["blob"]
+
+  private_dns_zone_ids_by_subresource = {
+    blob = [module.private_dns.zone_ids_by_service["blob"]]
+  }
+
+  role_assignments = merge(
+    # Tiers read and write application data.
+    {
+      for tier, principal_id in module.managed_identity.principal_ids :
+      "tier-${tier}" => {
+        principal_id         = principal_id
+        role_definition_name = "Storage Blob Data Contributor"
+        principal_type       = "ServicePrincipal"
+        description          = "Blob read/write for the ${tier} tier."
+      }
+    },
+    # The deploying operator needs data-plane access to create containers,
+    # because with shared keys disabled that is an Entra-authenticated call.
+    {
+      deployer = {
+        principal_id         = data.azurerm_client_config.current.object_id
+        role_definition_name = "Storage Blob Data Owner"
+        principal_type       = "User"
+        description          = "Operator managing containers and blob data."
+      }
+    },
+  )
+
+  containers = {
+    "app-data" = {}
+  }
+
+  depends_on = [module.managed_identity]
+}
+
+module "diagnostics_storage" {
+  source = "../../modules/diagnostics"
+
+  # Diagnostics for storage attach to the SERVICE, not the account: the account
+  # resource itself exposes only metrics. Blob logs live at
+  # <account-id>/blobServices/default.
+  target_resource_id         = "${module.storage.id}/blobServices/default"
+  log_analytics_workspace_id = module.log_analytics.id
+}
