@@ -74,3 +74,29 @@ module "resource_group" {
   tags                  = module.tags.tags
   enable_resource_locks = module.profile.enable_resource_locks
 }
+
+################################################################################
+# Phase 1 — Log Analytics
+#
+# Created before anything that emits telemetry, because a diagnostic setting
+# cannot be created before its destination exists.
+#
+# Lives in the monitoring resource group, not the application group, so that
+# destroying the app stack does not destroy its own audit trail.
+#
+# The workspace itself is free. Cost comes from ingestion volume, which is
+# capped at 0.5 GB/day by the dev profile to stay inside the free 5 GB/month
+# allowance.
+################################################################################
+
+module "log_analytics" {
+  source = "../../modules/log-analytics"
+
+  name                = module.naming.names.log_analytics_workspace
+  resource_group_name = module.resource_group.names["mon"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  retention_in_days = module.profile.profile.log_retention_days
+  daily_quota_gb    = module.profile.profile.log_daily_quota_gb
+}

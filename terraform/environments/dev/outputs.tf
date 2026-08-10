@@ -64,3 +64,22 @@ output "tags" {
   description = "Governance tags applied to every resource in this environment."
   value       = module.tags.tags
 }
+
+################################################################################
+# Log Analytics
+################################################################################
+
+output "log_analytics_workspace_id" {
+  description = "ARM resource ID of the workspace. Diagnostic settings, Data Collection Rules and alert rules target this."
+  value       = module.log_analytics.id
+}
+
+output "log_analytics_workspace_name" {
+  description = "Workspace name."
+  value       = module.log_analytics.name
+}
+
+output "log_ingestion_is_capped" {
+  description = "Whether a daily ingestion cap is active. True in dev to protect the free 5 GB/month allowance; ingestion stops for the rest of the UTC day once hit."
+  value       = module.log_analytics.ingestion_is_capped
+}
