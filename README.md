@@ -1,68 +1,60 @@
 # Azure-Terraform
 
-Provisions the **cloudcart** environment on Microsoft Azure with Terraform: a
-VNet with two subnets, a Linux bastion VM, and an AKS cluster.
+Enterprise-grade, multi-environment Azure infrastructure built with Terraform:
+a three-tier application platform behind a WAF, with all data services reachable
+only through private endpoints, all egress via a controlled path, and no public
+IP on any compute resource.
 
-## Layout
+Everything lives under [`terraform/`](terraform/).
 
 ```
-providers.tf   azurerm ~> 3.117, Service Principal auth
-backend.tf     partial azurerm backend, filled from backend.conf
-main.tf        resource group data source + network / virtual_machine / aks modules
-variables.tf   auth, resource group, tags, SSH
-outputs.tf     bastion IP + SSH command, AKS name and kubeconfig
-
-modules/
-  virtual_machine/   public IP, NIC, NSG, Ubuntu 24.04 VM with SystemAssigned identity
-  aks/               AKS cluster on subnet2, SystemAssigned identity
+terraform/
+├── docs/            architecture, networking and deployment documentation
+├── environments/    one root module per environment (dev, test, prod)
+└── modules/         22 reusable modules
 ```
 
-## Prerequisites
+**Start here:** [`terraform/README.md`](terraform/README.md)
 
-The resource group and the state storage account are **not** managed by this
-config — they must exist before the first `init`, since the backend lives in
-them. `main.tf` reads the resource group through a data source.
+| Document | Contents |
+|---|---|
+| [`terraform/docs/ARCHITECTURE.md`](terraform/docs/ARCHITECTURE.md) | Design decisions and rejected alternatives, traffic flow, Zero Trust control mapping, cost analysis |
+| [`terraform/docs/NETWORKING.md`](terraform/docs/NETWORKING.md) | CIDR allocation, subnet plan, NSG rule matrix, routing, private DNS, CAF naming |
+| [`terraform/docs/DEPLOYMENT.md`](terraform/docs/DEPLOYMENT.md) | Module dependency graph, deployment phases, gates, rollback characteristics |
 
-## Usage
+---
+
+## Standards
+
+| Area | Standard |
+|---|---|
+| Provider | `azurerm ~> 4.0`, exact patch locked in a committed `.terraform.lock.hcl` |
+| Terraform | `>= 1.9` |
+| Naming | Azure CAF abbreviations via the `naming` module — no literal resource names in calling code |
+| Tagging | Mandatory governance tags enforced by validation |
+| Secrets | None in code or state — managed identity and Entra ID authentication throughout |
+| State | Remote `azurerm` backend, one state file per environment |
+| Frameworks | Azure Well-Architected Framework, Azure CAF, HashiCorp Style Guide |
+
+---
+
+## Retired: the original `cloudcart` configuration
+
+The repository root previously held an earlier deployment — a Linux VM and an
+AKS cluster on `azurerm ~> 3.117`, with its own state backend.
+
+It has been removed. It was never successfully applied: the `cloudcart`
+resource group contained only its own state storage account, with no VNet, VM
+or cluster, so there was nothing to migrate. The new tree under `terraform/`
+supersedes it on `azurerm ~> 4.0`.
+
+The old code remains in git history if it is ever needed:
 
 ```bash
-terraform init -backend-config=backend.conf
-terraform plan
-terraform apply
+git log --oneline --all -- modules/ main.tf
+git show <commit>:main.tf
 ```
 
-`backend.conf` and `terraform.tfvars` hold credentials and are gitignored.
-Copy the examples below and fill in your own values.
-
-**terraform.tfvars**
-
-```hcl
-client_id         = "..."
-client_secret     = "..."
-tenant_id         = "..."
-subscription_id   = "..."
-ssh_public_key    = "ssh-rsa AAAA..."
-ssh_allowed_cidrs = ["203.0.113.4/32"]
-```
-
-**backend.conf**
-
-```hcl
-client_id            = "..."
-client_secret        = "..."
-tenant_id            = "..."
-subscription_id      = "..."
-resource_group_name  = "cloudcart"
-storage_account_name = "..."
-container_name       = "..."
-key                  = "terraform.tfstate"
-use_azuread_auth     = true
-```
-
-## Notes
-
-- `ssh_allowed_cidrs` defaults to `[]`, which creates **no** inbound SSH rule.
-  Set it to your own CIDR to reach the bastion.
-- The bastion sits on `subnet1` (10.0.1.0/24), AKS nodes on `subnet2`
-  (10.0.2.0/24).
-- Cluster credentials: `terraform output -raw aks_kube_config > ~/.kube/config`
+**AKS is not currently part of the new platform.** The three-tier design uses
+VM Scale Sets. If a container platform is wanted, it belongs as its own module
+with its own subnet — the address plan reserves `10.x.16.0/20` for exactly that.
