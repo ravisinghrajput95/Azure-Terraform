@@ -119,3 +119,93 @@ module "diagnostics_log_analytics" {
   target_resource_id         = module.log_analytics.id
   log_analytics_workspace_id = module.log_analytics.id
 }
+
+################################################################################
+# Phase 2 — network
+#
+# Address plan per docs/NETWORKING.md. dev occupies 10.10.0.0/16; test and prod
+# take 10.20.0.0/16 and 10.30.0.0/16, spaced so a future peering cannot
+# collide.
+#
+# Deployed here are only the subnets dev actually uses. The reserved ranges —
+# AzureFirewallSubnet 10.10.0.0/26, AzureFirewallManagementSubnet 10.10.0.64/26,
+# GatewaySubnet 10.10.0.192/26 and snet-agw 10.10.1.0/24 — are held by the
+# address plan and simply not allocated, so adding a firewall or Application
+# Gateway later needs no renumbering.
+#
+# Egress is the NAT Gateway: roughly $33/month, against roughly $912 for Azure
+# Firewall. This is the first resource in the platform that carries a real
+# recurring charge.
+################################################################################
+
+locals {
+  subnet_names = module.naming.subnet_names
+
+  vnet_address_space = ["10.10.0.0/16"]
+}
+
+module "networking" {
+  source = "../../modules/networking"
+
+  vnet_name           = module.naming.names.virtual_network
+  resource_group_name = module.resource_group.names["net"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  address_space = local.vnet_address_space
+
+  subnets = {
+    # Operator access. The name is fixed by Azure and the /26 is its minimum.
+    # No NAT Gateway association: Bastion manages its own outbound path, and
+    # associating one breaks the service.
+    AzureBastionSubnet = {
+      cidr = "10.10.0.128/26"
+    }
+
+    # Application tier. /22 rather than /24 because a scale set doing a rolling
+    # upgrade at scale transiently needs more addresses than instances, and a
+    # subnet holding resources cannot be resized.
+    (local.subnet_names["app"]) = {
+      cidr                  = "10.10.4.0/22"
+      associate_nat_gateway = true
+    }
+
+    (local.subnet_names["biz"]) = {
+      cidr                  = "10.10.8.0/22"
+      associate_nat_gateway = true
+    }
+
+    # Reserved for a future IaaS database. PaaS SQL reaches the VNet through a
+    # private endpoint, so nothing lands here today.
+    (local.subnet_names["db"]) = {
+      cidr                  = "10.10.12.0/24"
+      associate_nat_gateway = true
+    }
+
+    # Private endpoint NICs. "NetworkSecurityGroupEnabled" is required for NSG
+    # rules to apply — historically NSGs were ignored on private endpoint
+    # subnets, and leaving this Disabled means the rules written for it are
+    # silently never enforced.
+    (local.subnet_names["pep"]) = {
+      cidr                              = "10.10.13.0/24"
+      private_endpoint_network_policies = "NetworkSecurityGroupEnabled"
+      associate_nat_gateway             = true
+    }
+
+    (local.subnet_names["mgmt"]) = {
+      cidr                  = "10.10.14.0/24"
+      associate_nat_gateway = true
+    }
+  }
+
+  enable_nat_gateway         = module.profile.enable_nat_gateway
+  nat_gateway_name           = module.naming.names.nat_gateway
+  nat_gateway_public_ip_name = "pip-ng-${module.naming.base}-001"
+}
+
+module "diagnostics_vnet" {
+  source = "../../modules/diagnostics"
+
+  target_resource_id         = module.networking.vnet_id
+  log_analytics_workspace_id = module.log_analytics.id
+}

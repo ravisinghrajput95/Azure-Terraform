@@ -83,3 +83,32 @@ output "log_ingestion_is_capped" {
   description = "Whether a daily ingestion cap is active. True in dev to protect the free 5 GB/month allowance; ingestion stops for the rest of the UTC day once hit."
   value       = module.log_analytics.ingestion_is_capped
 }
+
+################################################################################
+# Network
+################################################################################
+
+output "vnet_id" {
+  description = "Virtual network resource ID."
+  value       = module.networking.vnet_id
+}
+
+output "subnet_ids" {
+  description = "Map of subnet name to resource ID."
+  value       = module.networking.subnet_ids
+}
+
+output "subnet_cidrs" {
+  description = "Map of subnet name to address prefix. NSG rules derive tier-to-tier sources from these rather than restating the address plan."
+  value       = module.networking.subnet_cidrs
+}
+
+output "nat_gateway_public_ip" {
+  description = "Public IP all outbound traffic is SNATed to. Allowlist this on any external service the workload calls."
+  value       = module.networking.nat_gateway_public_ip
+}
+
+output "subnets_without_egress" {
+  description = "Subnets with no outbound internet path. AzureBastionSubnet is expected here; anything else is worth investigating."
+  value       = module.networking.subnets_without_egress
+}
