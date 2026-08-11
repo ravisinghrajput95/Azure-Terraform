@@ -298,3 +298,33 @@ output "redis_reachable_from" {
   description = "Who can reach the cache, in plain language."
   value       = try(module.redis[0].reachable_from, null)
 }
+
+################################################################################
+# Load balancers
+################################################################################
+
+output "internal_lb_ip" {
+  description = "Private frontend address of the business tier load balancer."
+  value       = module.load_balancer_internal.frontend_ip_address
+}
+
+output "public_lb_ip" {
+  description = "Public ingress address, when a public load balancer provides ingress in place of Application Gateway."
+  value       = try(module.load_balancer_public[0].frontend_ip_address, null)
+}
+
+output "lb_backend_pool_ids" {
+  description = "Backend pool IDs the vm module attaches scale sets to."
+  value = {
+    biz = module.load_balancer_internal.backend_pool_ids["biz"]
+    app = try(module.load_balancer_public[0].backend_pool_ids["app"], null)
+  }
+}
+
+output "lb_probe_detection_seconds" {
+  description = "How long a failed instance keeps receiving traffic, per probe."
+  value = {
+    internal = module.load_balancer_internal.probe_detection_seconds
+    public   = try(module.load_balancer_public[0].probe_detection_seconds, null)
+  }
+}

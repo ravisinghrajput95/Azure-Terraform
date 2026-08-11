@@ -715,3 +715,109 @@ module "diagnostics_redis" {
   target_resource_id         = each.value
   log_analytics_workspace_id = module.log_analytics.id
 }
+
+################################################################################
+# Phase 5 — load balancers
+#
+# Two, with different jobs.
+#
+# The INTERNAL load balancer fronts the business tier. It is the boundary the
+# app tier talks to, and it is never reachable from outside the VNet.
+#
+# The PUBLIC load balancer provides ingress, because dev does not deploy
+# Application Gateway. Worth being explicit about what is lost: a load balancer
+# is a LAYER 4 device. It does not terminate TLS, inspect requests, or provide
+# a WAF. It forwards packets. test and prod use Application Gateway precisely
+# for what this cannot do — which is why the ingress NSG rule differs by
+# environment (see nsg-rules.tf).
+#
+# Standard SKU throughout. Beyond the Basic tier's retirement, Standard is
+# CLOSED by default: it permits no inbound traffic unless an NSG allows it.
+# The AzureLoadBalancer probe rule written in module 8 is what makes health
+# checks work at all.
+################################################################################
+
+module "load_balancer_internal" {
+  source = "../../modules/load-balancer"
+
+  name                = module.naming.names.load_balancer_internal
+  resource_group_name = module.resource_group.names["app"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  type      = "internal"
+  subnet_id = module.networking.subnet_ids[local.biz_subnet]
+  zones     = module.profile.profile.compute_zones
+
+  backend_pools = ["biz"]
+
+  probes = {
+    "biz-health" = {
+      protocol     = "Http"
+      port         = 8443
+      request_path = "/healthz"
+    }
+  }
+
+  rules = {
+    "biz-https" = {
+      frontend_port     = 8443
+      backend_port      = 8443
+      backend_pool_name = "biz"
+      probe_name        = "biz-health"
+    }
+  }
+}
+
+module "load_balancer_public" {
+  source = "../../modules/load-balancer"
+  count  = module.profile.enable_public_load_balancer ? 1 : 0
+
+  name                = module.naming.names.load_balancer_external
+  resource_group_name = module.resource_group.names["app"]
+  location            = module.resource_group.location
+  tags                = module.tags.tags
+
+  type           = "public"
+  public_ip_name = "pip-lbe-${module.naming.base}-001"
+  zones          = module.profile.profile.compute_zones
+
+  backend_pools = ["app"]
+
+  probes = {
+    "app-health" = {
+      protocol     = "Http"
+      port         = 443
+      request_path = "/healthz"
+    }
+  }
+
+  rules = {
+    "app-https" = {
+      frontend_port     = 443
+      backend_port      = 443
+      backend_pool_name = "app"
+      probe_name        = "app-health"
+    }
+  }
+
+  # Egress belongs to the NAT Gateway. Leaving LB SNAT enabled would create a
+  # second, undeclared egress path competing for a much smaller SNAT port
+  # allocation — the usual cause of intermittent outbound failures under load.
+  disable_outbound_snat = true
+}
+
+module "diagnostics_lb_internal" {
+  source = "../../modules/diagnostics"
+
+  target_resource_id         = module.load_balancer_internal.id
+  log_analytics_workspace_id = module.log_analytics.id
+}
+
+module "diagnostics_lb_public" {
+  source   = "../../modules/diagnostics"
+  for_each = module.profile.enable_public_load_balancer ? { this = module.load_balancer_public[0].id } : {}
+
+  target_resource_id         = each.value
+  log_analytics_workspace_id = module.log_analytics.id
+}
