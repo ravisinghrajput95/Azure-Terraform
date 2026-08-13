@@ -329,14 +329,31 @@ the network, then data, then compute, then observability wiring.
 | 16 | `redis` | 6, 10 | Private endpoint. |
 | 17 | `load-balancer` | 6 | Internal LB for the business tier. |
 | 18 | `application-gateway` | 6, 12 | Needs the vault for its TLS certificate. |
-| 19 | `vm` | 6, 7, 11, 17, 18 | VMSS for both tiers; last because it consumes everything. |
-| 20 | `autoscale` | 19 | Scale rules target the VMSS. |
-| 21 | `recovery-services` | 3, 19 | Backup policies for the scale sets. |
+| 19 | ~~`vm`~~ → `aks` | 6, 7, 11 | **Superseded.** VMSS never built; compute is AKS. See §6b. |
+| 20 | ~~`autoscale`~~ | — | **Dropped.** The cluster autoscaler lives on the node pool, inside `aks`. |
+| 21 | `recovery-services` | 3 | Vault and policies. Its original subject — the scale sets — never existed, so it protects nothing. See below. |
 | 22 | `monitor` | 4, and all | Alerts reference resources that must already exist. |
 
 Modules 1–2 are additions to your original list. A "naming convention module"
 and "tags module" appear in your Terraform Standards section but not in the
 repository structure — they are foundational, so they are listed explicitly.
+
+Rows 19–21 are left in place rather than rewritten, because the build order as
+*planned* is part of the record. What changed is documented in §6b.
+
+**`recovery-services` deserves its own note.** It was specified to back up the
+VM Scale Sets. With compute on AKS, almost nothing in this platform is left for
+a Recovery Services vault to protect: SQL carries its own short-term and
+long-term retention, storage is blob-only with versioning and soft delete
+already enabled, and AKS backup is a different resource family entirely
+(`Microsoft.DataProtection`, a Backup vault, plus an in-cluster extension).
+
+The module therefore deploys a vault and its policies and creates **no
+protected items**. Both are free — Azure bills per protected instance — so the
+configuration is deployed and verifiable, ready for whatever qa, stage or
+production put in front of it. The alternative, a module that exists only as
+untested code, was rejected: this platform has already been bitten once by
+configuration that looked correct and had never run.
 
 ---
 

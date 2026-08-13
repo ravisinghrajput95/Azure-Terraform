@@ -361,3 +361,17 @@ output "alert_action_group_id" {
   description = "Action group any additional alert rule should attach to."
   value       = one(module.monitor[*].action_group_id)
 }
+
+################################################################################
+# Backup
+################################################################################
+
+output "backup_posture" {
+  description = "Backup posture in plain language. This environment deploys a vault and policies and protects nothing — see the recovery-services module README for why."
+  value       = module.recovery_services.backup_posture_summary
+}
+
+output "backup_vault_name" {
+  description = "Recovery Services vault name. A protected VM or file share references the vault by name plus resource group."
+  value       = module.recovery_services.name
+}

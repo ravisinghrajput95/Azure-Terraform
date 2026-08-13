@@ -890,3 +890,41 @@ module "monitor" {
     pods-pending = 3
   }
 }
+
+################################################################################
+# Backup
+#
+# The vault and its policies, protecting NOTHING — see the module README.
+# Compute is AKS, so the VM Scale Sets this was designed to back up never
+# existed; SQL carries its own retention, and storage is blob-only with
+# versioning and soft delete already on.
+#
+# Deliberately NOT gated on profile.enable_backup. That flag governs whether
+# workloads are protected, and this module never protects anything. The vault
+# and policies are free, so they are deployed and verifiable here, ready for
+# whatever qa, stage or production later put in front of them.
+#
+# LocallyRedundant is explicit: Azure defaults to GeoRedundant, which costs
+# materially more, and the setting cannot be changed once anything is
+# protected.
+################################################################################
+
+module "recovery_services" {
+  source = "../../modules/recovery-services"
+
+  name                = module.naming.names.recovery_services_vault
+  resource_group_name = module.resource_group.names["mon"]
+  location            = var.location
+  tags                = module.tags.tags
+
+  storage_mode_type = "LocallyRedundant"
+
+  vm_backup_policies = {
+    "bp-vm-daily" = {
+      frequency       = "Daily"
+      time            = "23:00"
+      timezone        = "UTC"
+      retention_daily = module.profile.profile.backup_retention_days
+    }
+  }
+}
