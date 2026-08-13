@@ -1,0 +1,50 @@
+# Pre-commit hooks — the same checks CI runs, moved to commit time.
+#
+# CI is the gate; this is the fast feedback. Anything here that is slow or
+# needs cloud credentials is deliberately left to CI alone: a hook that takes
+# a minute gets bypassed with --no-verify, and a bypassed hook is worse than
+# no hook because it is still believed in.
+#
+#   pre-commit install
+#
+# Note terraform_validate and terraform_tflint run `terraform init` per
+# directory on first use, so the first commit after installing is slow and
+# every one after it is not.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+      # State is a secret: it holds resource IDs, connection metadata and any
+      # value a provider marked sensitive but still had to persist. The
+      # .gitignore covers it; this is the second line.
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.96.2
+    hooks:
+      - id: terraform_fmt
+
+      - id: terraform_validate
+        exclude: ^terraform/environments/(qa|stage|prod)/
+        args:
+          - --hook-config=--retry-once-with-cleanup=true
+
+      - id: terraform_tflint
+        exclude: ^terraform/environments/(qa|stage|prod)/
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+
+      # Misconfiguration scan. Runs on changed directories only, so it stays
+      # fast enough not to be bypassed.
+      - id: terraform_trivy
+        args:
+          - --args=--severity=HIGH,CRITICAL

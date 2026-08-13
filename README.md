@@ -5,19 +5,28 @@ a three-tier application platform behind a WAF, with all data services reachable
 only through private endpoints, all egress via a controlled path, and no public
 IP on any compute resource.
 
-Everything lives under [`terraform/`](terraform/).
-
 ```
+bootstrap/           Phase 0 — the state backend, on local state by necessity
 terraform/
 ├── docs/            architecture, networking and deployment documentation
-├── environments/    one root module per environment (dev, test, prod)
-└── modules/         22 reusable modules
+├── environments/    one root module per environment (dev, qa, stage, prod)
+└── modules/         21 reusable modules
+Makefile             every check CI runs, plus plan/apply per environment
 ```
 
 **Start here:** [`terraform/README.md`](terraform/README.md)
 
+```bash
+pre-commit install      # the CI checks, at commit time
+make check              # fmt-check, validate, test, lint
+make plan ENV=dev       # needs credentials
+```
+
 | Document | Contents |
 |---|---|
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Conventions that are load-bearing rather than stylistic, and the failures behind them |
+| [`SECURITY.md`](SECURITY.md) | Reporting, security posture, and the weaknesses deliberately accepted |
+| [`bootstrap/README.md`](bootstrap/README.md) | Why the backend runs on local state, and how to adopt the existing one by import |
 | [`terraform/docs/ARCHITECTURE.md`](terraform/docs/ARCHITECTURE.md) | Design decisions and rejected alternatives, traffic flow, Zero Trust control mapping, cost analysis |
 | [`terraform/docs/NETWORKING.md`](terraform/docs/NETWORKING.md) | CIDR allocation, subnet plan, NSG rule matrix, routing, private DNS, CAF naming |
 | [`terraform/docs/DEPLOYMENT.md`](terraform/docs/DEPLOYMENT.md) | Module dependency graph, deployment phases, gates, rollback characteristics |
