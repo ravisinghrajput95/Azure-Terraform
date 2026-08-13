@@ -53,7 +53,12 @@ module "profile" {
   environment             = local.environment
   overrides               = var.profile_overrides
   subscription_vcpu_quota = var.subscription_vcpu_quota
-  compute_tier_count      = 2
+
+  # One, not two. The VM Scale Set design had an app tier and a biz tier, each
+  # its own scale set. AKS replaces both with a single cluster whose node pools
+  # share the quota, so counting two tiers would double both the vCPU footprint
+  # and the cost estimate.
+  compute_tier_count = 1
 }
 
 ################################################################################
@@ -192,6 +197,16 @@ module "networking" {
       associate_nat_gateway             = true
     }
 
+    # Kubernetes node subnet, from the range docs/NETWORKING.md reserved for a
+    # container platform. Under Azure CNI Overlay this holds NODE addresses
+    # only — pods draw from pod_cidr, routed inside the cluster. Classic CNI
+    # would consume one subnet address per pod and cap the cluster at the
+    # subnet size.
+    "snet-aks-dev-cus" = {
+      cidr                  = "10.10.16.0/20"
+      associate_nat_gateway = true
+    }
+
     (local.subnet_names["mgmt"]) = {
       cidr                  = "10.10.14.0/24"
       associate_nat_gateway = true
@@ -298,6 +313,7 @@ module "route_table" {
         (local.db_subnet)   = module.networking.subnet_ids[local.db_subnet]
         (local.pep_subnet)  = module.networking.subnet_ids[local.pep_subnet]
         (local.mgmt_subnet) = module.networking.subnet_ids[local.mgmt_subnet]
+        (local.aks_subnet)  = module.networking.subnet_ids[local.aks_subnet]
       }
     }
   }
@@ -716,108 +732,107 @@ module "diagnostics_redis" {
   log_analytics_workspace_id = module.log_analytics.id
 }
 
+
+
+
+
 ################################################################################
-# Phase 5 — load balancers
+# Phase 5 — Azure Kubernetes Service
 #
-# Two, with different jobs.
+# Replaces the VM Scale Set tiers. The consequence worth naming rather than
+# glossing: the three-tier boundary MOVES. Where the app and biz tiers were
+# separate subnets with an NSG between them that Azure enforced at the network
+# layer, they are now namespaces separated by a Kubernetes network policy that
+# the cluster enforces. Trust moves from the platform into the cluster, which
+# is why network_policy is not optional in the module.
 #
-# The INTERNAL load balancer fronts the business tier. It is the boundary the
-# app tier talks to, and it is never reachable from outside the VNet.
+# dev's cluster is deliberately NOT highly available, and the reason is
+# arithmetic:
 #
-# The PUBLIC load balancer provides ingress, because dev does not deploy
-# Application Gateway. Worth being explicit about what is lost: a load balancer
-# is a LAYER 4 device. It does not terminate TLS, inspect requests, or provide
-# a WAF. It forwards packets. test and prod use Application Gateway precisely
-# for what this cannot do — which is why the ingress NSG rule differs by
-# environment (see nsg-rules.tf).
+#   3 nodes across 3 zones = 6 vCPU   quota is 4        OVER
+#   2 nodes                = 4 vCPU   6 during upgrade  OVER
+#   1 node                 = 2 vCPU   4 during upgrade  fits
 #
-# Standard SKU throughout. Beyond the Basic tier's retirement, Standard is
-# CLOSED by default: it permits no inbound traffic unless an NSG allows it.
-# The AzureLoadBalancer probe rule written in module 8 is what makes health
-# checks work at all.
+# AKS adds a surge node during upgrades, so even two nodes would leave the
+# cluster unpatchable. A single-node system pool is what fits. The
+# availability_summary output states this plainly so it never reads as
+# production-shaped.
+#
+# The API server is public with the operator IP allowlisted. Private is the
+# correct posture and is what test and prod use — but it means kubectl only
+# works from inside the VNet or through Bastion, the same trade-off already
+# made for the Key Vault data plane.
 ################################################################################
 
-module "load_balancer_internal" {
-  source = "../../modules/load-balancer"
+module "aks" {
+  source = "../../modules/aks"
 
-  name                = module.naming.names.load_balancer_internal
+  name                = "aks-${module.naming.base}-001"
+  dns_prefix          = "${var.workload}-${local.environment}"
   resource_group_name = module.resource_group.names["app"]
   location            = module.resource_group.location
   tags                = module.tags.tags
 
-  type      = "internal"
-  subnet_id = module.networking.subnet_ids[local.biz_subnet]
-  zones     = module.profile.profile.compute_zones
+  sku_tier = module.profile.profile.aks_sku_tier
 
-  backend_pools = ["biz"]
+  system_node_pool = {
+    vm_size    = module.profile.profile.vm_size
+    node_count = module.profile.profile.instance_count
+    zones      = module.profile.profile.compute_zones
 
-  probes = {
-    "biz-health" = {
-      protocol     = "Http"
-      port         = 8443
-      request_path = "/healthz"
-    }
+    # Cannot taint the system pool when it is the only pool — nothing would be
+    # schedulable. The module rejects that combination.
+    only_critical_addons_taint = module.profile.enable_user_node_pool
   }
 
-  rules = {
-    "biz-https" = {
-      frontend_port     = 8443
-      backend_port      = 8443
-      backend_pool_name = "biz"
-      probe_name        = "biz-health"
+  user_node_pools = module.profile.enable_user_node_pool ? {
+    app = {
+      vm_size              = module.profile.profile.vm_size
+      auto_scaling_enabled = true
+      min_count            = module.profile.profile.user_node_pool_min_count
+      max_count            = module.profile.profile.user_node_pool_max_count
+      zones                = module.profile.profile.compute_zones
     }
-  }
-}
+  } : {}
 
-module "load_balancer_public" {
-  source = "../../modules/load-balancer"
-  count  = module.profile.enable_public_load_balancer ? 1 : 0
+  vnet_subnet_id = module.networking.subnet_ids["snet-aks-dev-cus"]
 
-  name                = module.naming.names.load_balancer_external
-  resource_group_name = module.resource_group.names["app"]
-  location            = module.resource_group.location
-  tags                = module.tags.tags
+  # Azure CNI Overlay. pod_cidr and service_cidr are routed inside the cluster
+  # only and must not overlap 10.10.0.0/16 or anything peered to it.
+  network_plugin      = "azure"
+  network_plugin_mode = "overlay"
+  network_policy      = module.profile.profile.aks_network_policy
+  pod_cidr            = "192.168.0.0/16"
+  service_cidr        = "172.16.0.0/16"
+  dns_service_ip      = "172.16.0.10"
 
-  type           = "public"
-  public_ip_name = "pip-lbe-${module.naming.base}-001"
-  zones          = module.profile.profile.compute_zones
+  # The networking module already attached a NAT Gateway to this subnet, so
+  # the cluster uses it rather than provisioning its own egress.
+  #
+  # NOT "userDefinedRouting" — that is the Azure Firewall topology and requires
+  # a route table carrying an egress route. Choosing it here fails at create
+  # time with ExistingRouteTableNotAssociatedWithSubnet, an error that names
+  # the route table rather than the setting.
+  outbound_type = "userAssignedNATGateway"
 
-  backend_pools = ["app"]
+  private_cluster_enabled         = module.profile.aks_private_cluster
+  api_server_authorized_ip_ranges = [for ip in var.deployer_ip_addresses : "${ip}/32"]
 
-  probes = {
-    "app-health" = {
-      protocol     = "Http"
-      port         = 443
-      request_path = "/healthz"
-    }
-  }
+  # Entra ID only. The local admin account authenticates with a certificate
+  # that cannot be rotated or attributed to a person.
+  local_account_disabled       = true
+  entra_admin_group_object_ids = var.aks_admin_group_object_ids
+  azure_rbac_enabled           = true
 
-  rules = {
-    "app-https" = {
-      frontend_port     = 443
-      backend_port      = 443
-      backend_pool_name = "app"
-      probe_name        = "app-health"
-    }
-  }
+  workload_identity_enabled = true
+  oidc_issuer_enabled       = true
 
-  # Egress belongs to the NAT Gateway. Leaving LB SNAT enabled would create a
-  # second, undeclared egress path competing for a much smaller SNAT port
-  # allocation — the usual cause of intermittent outbound failures under load.
-  disable_outbound_snat = true
-}
-
-module "diagnostics_lb_internal" {
-  source = "../../modules/diagnostics"
-
-  target_resource_id         = module.load_balancer_internal.id
   log_analytics_workspace_id = module.log_analytics.id
 }
 
-module "diagnostics_lb_public" {
-  source   = "../../modules/diagnostics"
-  for_each = module.profile.enable_public_load_balancer ? { this = module.load_balancer_public[0].id } : {}
+module "diagnostics_aks" {
+  source = "../../modules/diagnostics"
 
-  target_resource_id         = each.value
+  target_resource_id         = module.aks.id
   log_analytics_workspace_id = module.log_analytics.id
 }

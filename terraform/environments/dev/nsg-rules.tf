@@ -25,6 +25,7 @@ locals {
   db_subnet      = local.subnet_names["db"]
   pep_subnet     = local.subnet_names["pep"]
   mgmt_subnet    = local.subnet_names["mgmt"]
+  aks_subnet     = "snet-aks-dev-cus"
   bastion_subnet = "AzureBastionSubnet"
 
   # Ingress source for the application tier depends on what fronts it. With
@@ -150,12 +151,16 @@ locals {
           source_port_range = "*"
           # 1433 SQL, 6380 Redis TLS, 443 Key Vault and Storage.
           destination_port_ranges = ["443", "1433", "6380"]
+          # The AKS node subnet, NOT the app and biz subnets. Under Azure CNI
+          # Overlay a pod's traffic leaving the cluster is SNATed to its NODE
+          # address, so a rule naming the old tier subnets would match nothing
+          # and every call from a pod to SQL, Redis, Key Vault or Storage would
+          # hit the deny below.
           source_address_prefixes = [
-            local.cidr[local.app_subnet],
-            local.cidr[local.biz_subnet],
+            local.cidr[local.aks_subnet],
           ]
           destination_address_prefix = "*"
-          description                = "SQL, Redis over TLS, Key Vault and Storage, from the application and business tiers only."
+          description                = "SQL, Redis over TLS, Key Vault and Storage, from the AKS node subnet."
         }
         "Deny-All-Inbound" = local.deny_all_inbound
       }
@@ -182,6 +187,28 @@ locals {
     (module.naming.network_security_group_names["mgmt"]) = {
       subnet_id = module.networking.subnet_ids[local.mgmt_subnet]
       rules = {
+        "Allow-SSH-Admin"  = local.allow_ssh_from_bastion
+        "Deny-All-Inbound" = local.deny_all_inbound
+      }
+    }
+
+    ############################################################################
+    # Kubernetes nodes
+    #
+    # Deliberately sparse. The tier boundary that used to live between
+    # snet-app and snet-biz now lives INSIDE the cluster, enforced by the
+    # Kubernetes network policy engine rather than by an NSG — pods are not
+    # separated by subnet, so an NSG cannot express app-to-biz rules any more.
+    #
+    # What remains at this layer is the outer perimeter: ingress reaches the
+    # cluster's own load balancer, and nothing else gets in. AKS manages rules
+    # for its managed load balancer inside the node resource group; adding
+    # overlapping rules here fights that reconciliation.
+    ############################################################################
+    "nsg-aks-dev-cus" = {
+      subnet_id = module.networking.subnet_ids[local.aks_subnet]
+      rules = {
+        "Allow-LB-Probe"   = local.allow_lb_probe
         "Allow-SSH-Admin"  = local.allow_ssh_from_bastion
         "Deny-All-Inbound" = local.deny_all_inbound
       }

@@ -15,9 +15,17 @@ variables {
 run "dev_is_free_tier_safe" {
   command = plan
 
+  # Not B1s (below the AKS system pool minimum of 2 vCPU / 4 GB) and not B2s
+  # (not permitted on this subscription in Central US — a subscription
+  # restriction, not a quota).
   assert {
-    condition     = output.profile.vm_size == "Standard_B1s"
-    error_message = "dev must use a burstable size; trial subscriptions have zero quota for most other families."
+    condition     = output.profile.vm_size == "Standard_D2s_v4"
+    error_message = "dev must use a size that is both permitted on the subscription and meets the AKS system pool minimum."
+  }
+
+  assert {
+    condition     = output.vcpus_per_instance == 2
+    error_message = "The vCPU lookup table must know the dev VM size, or the quota assertion silently does not run."
   }
 
   assert {
@@ -492,6 +500,119 @@ run "rejects_production_with_public_data_plane" {
     environment = "prod"
     overrides = {
       data_plane_public_access_enabled = true
+    }
+  }
+
+  expect_failures = [
+    terraform_data.validation,
+  ]
+}
+
+
+################################################################################
+# Kubernetes
+################################################################################
+
+run "dev_cluster_fits_the_vcpu_quota" {
+  command = plan
+
+  variables {
+    subscription_vcpu_quota = 4
+    compute_tier_count      = 1
+  }
+
+  # A single node at 2 vCPU, leaving headroom for the surge node AKS adds
+  # during an upgrade. Three nodes for real HA would be 6 vCPU, over quota.
+  assert {
+    condition     = output.peak_vcpus <= 4
+    error_message = "dev cluster peak footprint is ${output.peak_vcpus} vCPU, above the 4 vCPU trial quota."
+  }
+}
+
+run "dev_cluster_is_not_pretending_to_be_ha" {
+  command = plan
+
+  assert {
+    condition     = output.aks_is_highly_available == false
+    error_message = "A single-node cluster with no zones must not report itself highly available."
+  }
+
+  assert {
+    condition     = output.enable_user_node_pool == false
+    error_message = "dev shares the system pool; a separate user pool does not fit the quota."
+  }
+
+  assert {
+    condition     = output.aks_private_cluster == false
+    error_message = "dev keeps a public API server so kubectl works from an operator machine."
+  }
+}
+
+run "prod_cluster_is_genuinely_ha" {
+  command = plan
+
+  variables {
+    environment = "prod"
+  }
+
+  assert {
+    condition     = output.aks_is_highly_available == true
+    error_message = "prod must be HA: three or more nodes across three zones."
+  }
+
+  assert {
+    condition     = output.aks_private_cluster == true
+    error_message = "prod must use a private API server."
+  }
+
+  assert {
+    condition     = output.profile.aks_sku_tier == "Standard"
+    error_message = "prod requires the Standard SKU tier; Free carries no control-plane SLA."
+  }
+
+  assert {
+    condition     = output.enable_user_node_pool == true
+    error_message = "prod must separate workloads from the system pool."
+  }
+}
+
+run "rejects_production_with_public_api_server" {
+  command = plan
+
+  variables {
+    environment = "prod"
+    overrides = {
+      aks_private_cluster = false
+    }
+  }
+
+  expect_failures = [
+    terraform_data.validation,
+  ]
+}
+
+run "rejects_production_on_the_free_sku_tier" {
+  command = plan
+
+  variables {
+    environment = "prod"
+    overrides = {
+      aks_sku_tier = "Free"
+    }
+  }
+
+  expect_failures = [
+    terraform_data.validation,
+  ]
+}
+
+run "rejects_production_without_three_zones" {
+  command = plan
+
+  variables {
+    environment = "prod"
+    overrides = {
+      compute_zones = ["1", "2"]
     }
   }
 

@@ -53,13 +53,47 @@ locals {
       enable_bastion = true
       bastion_sku    = "Developer"
 
-      # [FREE-TIER] 1 instance per tier x 2 tiers = 2 vCPUs, inside a 4-vCPU
-      # quota with headroom for a rolling upgrade.
-      vm_size                 = "Standard_B1s"
+      # Kubernetes.
+      #
+      # dev's cluster is deliberately NOT highly available, and the reason is
+      # arithmetic rather than preference: HA needs three nodes across three
+      # zones, which is 6 vCPU against a 4 vCPU trial quota. Even two nodes
+      # fails, because AKS adds a surge node during upgrades (max_surge = 1)
+      # and a cluster that cannot be patched is not one worth running.
+      #
+      # So dev runs a single-node system pool. The is_highly_available output
+      # reports false so this never reads as production-shaped.
+      aks_sku_tier             = "Free"
+      aks_private_cluster      = false
+      aks_network_policy       = "azure"
+      enable_user_node_pool    = false
+      user_node_pool_min_count = 1
+      user_node_pool_max_count = 2
+
+      # [FREE-TIER] 1 node x 2 vCPU = 2 vCPU, inside a 4-vCPU quota with
+      # headroom for the upgrade surge node.
+      #
+      # NOT Standard_B2s: that size is not permitted on this subscription in
+      # Central US. The API rejects it with "The VM size of Standard_B2s is not
+      # allowed in your subscription in location", which is a subscription
+      # restriction rather than a quota — the same class of block as SQL
+      # provisioning in East US.
+      #
+      # Standard_D2s_v4 is permitted, x86, and 2 vCPU / 8 GiB, comfortably over
+      # the AKS system pool minimum of 2 vCPU / 4 GiB.
+      #
+      # The cheapest PERMITTED size is Standard_B2pls_v2 at roughly $28/month
+      # against this one's ~$70-90 — but it is ARM, so every container image
+      # would need an arm64 build. That is a workload constraint, not an
+      # infrastructure one, so it is left as a deliberate override rather than
+      # a default:
+      #
+      #   profile_overrides = { vm_size = "Standard_B2pls_v2" }
+      vm_size                 = "Standard_D2s_v4"
       instance_count          = 1
       enable_autoscale        = false
       autoscale_min_instances = 1
-      autoscale_max_instances = 2
+      autoscale_max_instances = 1
       compute_zones           = []
       # Trial subscriptions are allocated zero Spot vCPUs by default, so spot
       # instances would fail to allocate rather than save money.
@@ -158,6 +192,13 @@ locals {
       enable_bastion = true
       bastion_sku    = "Basic"
 
+      aks_sku_tier             = "Standard"
+      aks_private_cluster      = true
+      aks_network_policy       = "azure"
+      enable_user_node_pool    = true
+      user_node_pool_min_count = 1
+      user_node_pool_max_count = 3
+
       vm_size                 = "Standard_D2s_v5"
       instance_count          = 2
       enable_autoscale        = true
@@ -229,6 +270,13 @@ locals {
 
       enable_bastion = true
       bastion_sku    = "Standard"
+
+      aks_sku_tier             = "Standard"
+      aks_private_cluster      = true
+      aks_network_policy       = "azure"
+      enable_user_node_pool    = true
+      user_node_pool_min_count = 3
+      user_node_pool_max_count = 10
 
       vm_size                 = "Standard_D4s_v5"
       instance_count          = 3
@@ -312,6 +360,13 @@ locals {
     enable_bastion = local.o.enable_bastion != null ? local.o.enable_bastion : local.selected.enable_bastion
     bastion_sku    = local.o.bastion_sku != null ? local.o.bastion_sku : local.selected.bastion_sku
 
+    aks_sku_tier             = local.o.aks_sku_tier != null ? local.o.aks_sku_tier : local.selected.aks_sku_tier
+    aks_private_cluster      = local.o.aks_private_cluster != null ? local.o.aks_private_cluster : local.selected.aks_private_cluster
+    aks_network_policy       = local.o.aks_network_policy != null ? local.o.aks_network_policy : local.selected.aks_network_policy
+    enable_user_node_pool    = local.o.enable_user_node_pool != null ? local.o.enable_user_node_pool : local.selected.enable_user_node_pool
+    user_node_pool_min_count = local.o.user_node_pool_min_count != null ? local.o.user_node_pool_min_count : local.selected.user_node_pool_min_count
+    user_node_pool_max_count = local.o.user_node_pool_max_count != null ? local.o.user_node_pool_max_count : local.selected.user_node_pool_max_count
+
     vm_size                 = local.o.vm_size != null ? local.o.vm_size : local.selected.vm_size
     instance_count          = local.o.instance_count != null ? local.o.instance_count : local.selected.instance_count
     enable_autoscale        = local.o.enable_autoscale != null ? local.o.enable_autoscale : local.selected.enable_autoscale
@@ -357,27 +412,38 @@ locals {
 
 locals {
   vm_size_vcpus = {
-    Standard_B1s     = 1
-    Standard_B1ms    = 1
-    Standard_B2s     = 2
-    Standard_B2ms    = 2
-    Standard_B4ms    = 4
-    Standard_B8ms    = 8
-    Standard_DS1_v2  = 1
-    Standard_DS2_v2  = 2
-    Standard_D2s_v3  = 2
-    Standard_D4s_v3  = 4
-    Standard_D2s_v5  = 2
-    Standard_D4s_v5  = 4
-    Standard_D8s_v5  = 8
-    Standard_D2ds_v5 = 2
-    Standard_D4ds_v5 = 4
-    Standard_D2ds_v7 = 2
-    Standard_D4ds_v7 = 4
-    Standard_F2s_v2  = 2
-    Standard_F4s_v2  = 4
-    Standard_E2s_v5  = 2
-    Standard_E4s_v5  = 4
+    Standard_B1s  = 1
+    Standard_B1ms = 1
+    Standard_B2s  = 2
+    Standard_B2ms = 2
+    Standard_B4ms = 4
+    Standard_B8ms = 8
+
+    # Sizes permitted on a restricted subscription. B-series x86 is blocked in
+    # some regions, so the ARM b*ps_v2 family and the D-series are the fallbacks.
+    Standard_B2ps_v2  = 2
+    Standard_B2pls_v2 = 2
+    Standard_B4ps_v2  = 4
+    Standard_D2s_v4   = 2
+    Standard_D4s_v4   = 4
+    Standard_D2s_v6   = 2
+    Standard_D2ls_v6  = 2
+    Standard_D2as_v7  = 2
+    Standard_DS1_v2   = 1
+    Standard_DS2_v2   = 2
+    Standard_D2s_v3   = 2
+    Standard_D4s_v3   = 4
+    Standard_D2s_v5   = 2
+    Standard_D4s_v5   = 4
+    Standard_D8s_v5   = 8
+    Standard_D2ds_v5  = 2
+    Standard_D4ds_v5  = 4
+    Standard_D2ds_v7  = 2
+    Standard_D4ds_v7  = 4
+    Standard_F2s_v2   = 2
+    Standard_F4s_v2   = 4
+    Standard_E2s_v5   = 2
+    Standard_E4s_v5   = 4
   }
 
   vcpus_per_instance = lookup(local.vm_size_vcpus, local.profile.vm_size, null)
@@ -420,15 +486,17 @@ locals {
   cost_bastion = local.profile.enable_bastion ? lookup(local.bastion_costs, local.profile.bastion_sku, 140) : 0
 
   vm_monthly_costs = {
-    Standard_B1s     = 8
-    Standard_B1ms    = 15
-    Standard_B2s     = 30
-    Standard_B2ms    = 60
-    Standard_D2s_v5  = 70
-    Standard_D4s_v5  = 140
-    Standard_D8s_v5  = 280
-    Standard_D2ds_v5 = 82
-    Standard_D4ds_v5 = 164
+    Standard_B1s      = 8
+    Standard_B1ms     = 15
+    Standard_B2s      = 30
+    Standard_B2ms     = 60
+    Standard_D2s_v4   = 75
+    Standard_B2pls_v2 = 28
+    Standard_D2s_v5   = 70
+    Standard_D4s_v5   = 140
+    Standard_D8s_v5   = 280
+    Standard_D2ds_v5  = 82
+    Standard_D4ds_v5  = 164
   }
   cost_compute = lookup(local.vm_monthly_costs, local.profile.vm_size, 100) * local.profile.instance_count * var.compute_tier_count
 
@@ -577,6 +645,9 @@ locals {
     local.profile.enable_resource_locks ? [] : ["Production requires enable_resource_locks."],
     local.profile.data_plane_public_access_enabled ? ["Production must not expose data services on a public endpoint. Set data_plane_public_access_enabled = false; access is via private endpoint only."] : [],
     (local.profile.enable_redis && !local.profile.redis_high_availability) ? ["Production requires redis_high_availability. Without it the cache is a single node with no SLA, and a host fault loses it entirely."] : [],
+    local.profile.aks_private_cluster ? [] : ["Production requires aks_private_cluster. A public API server endpoint exposes the Kubernetes control plane to the internet."],
+    local.profile.aks_sku_tier == "Standard" || local.profile.aks_sku_tier == "Premium" ? [] : ["Production requires the Standard or Premium AKS SKU tier. The Free tier carries NO control-plane SLA and caps the cluster at a smaller node count."],
+    length(local.profile.compute_zones) >= 3 ? [] : ["Production requires node pools across three availability zones. Fewer means a zone outage takes the cluster with it."],
     local.profile.sql_backup_retention_days >= 35 ? [] : ["Production requires sql_backup_retention_days of at least 35, got ${local.profile.sql_backup_retention_days}."],
     local.profile.log_daily_quota_gb > 0 ? ["Production must not set a Log Analytics daily quota (log_daily_quota_gb = ${local.profile.log_daily_quota_gb}). A cap drops ingestion once hit, including the security signals an investigation depends on. Use -1."] : [],
   ) : []

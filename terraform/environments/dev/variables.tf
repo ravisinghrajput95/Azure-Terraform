@@ -118,3 +118,13 @@ variable "sql_entra_admin_is_group" {
   type        = bool
   default     = false
 }
+
+################################################################################
+# Kubernetes administration
+################################################################################
+
+variable "aks_admin_group_object_ids" {
+  description = "Entra group object IDs granted cluster-admin on AKS. With the local account disabled these are the ONLY way in, so an empty list produces a cluster nobody can authenticate to. Defaults to the deploying user's own object ID, which is acceptable in a personal subscription and a governance weakness anywhere else — prefer a group."
+  type        = list(string)
+  default     = []
+}

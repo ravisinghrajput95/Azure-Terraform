@@ -11,3 +11,5 @@ data_classification = "internal"
 subscription_vcpu_quota = 4
 
 deployer_ip_addresses = ["<your-public-ip>"]
+
+aks_admin_group_object_ids = ["<entra-group-object-id>"]

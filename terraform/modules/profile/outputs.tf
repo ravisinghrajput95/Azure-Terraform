@@ -73,6 +73,21 @@ output "data_plane_public_access_enabled" {
   value       = local.profile.data_plane_public_access_enabled
 }
 
+output "aks_is_highly_available" {
+  description = "Whether the cluster is genuinely HA: three or more nodes spread across at least three availability zones. False means a node or zone fault takes the cluster with it — reported explicitly so a degraded dev cluster never reads as production-shaped."
+  value       = length(local.profile.compute_zones) >= 3 && local.profile.autoscale_min_instances >= 3
+}
+
+output "aks_private_cluster" {
+  description = "Whether the Kubernetes API server is private. When true, kubectl works only from inside the VNet or through Bastion."
+  value       = local.profile.aks_private_cluster
+}
+
+output "enable_user_node_pool" {
+  description = "Whether a separate user node pool is deployed. When false, workloads share the system pool with the cluster's own components — acceptable in dev, poor practice anywhere else."
+  value       = local.profile.enable_user_node_pool
+}
+
 output "enable_resource_locks" {
   description = "Whether CanNotDelete management locks are applied to stateful resources. This is the conditional substitute for `prevent_destroy`, which cannot accept a variable. See README.md."
   value       = local.profile.enable_resource_locks

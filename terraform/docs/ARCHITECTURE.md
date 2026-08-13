@@ -387,6 +387,60 @@ charges to every request.
 
 ---
 
+## 6b. Compute is AKS, not VM Scale Sets
+
+The platform was designed around VM Scale Sets: an application tier and a
+business tier, each its own scale set in its own subnet, with an NSG between
+them. It now runs a single AKS cluster instead.
+
+**What this changes, and it is not a detail.** The three-tier boundary moves
+from the network into the cluster:
+
+| | VM Scale Sets | AKS |
+|---|---|---|
+| Tiers are | separate subnets | namespaces in one cluster |
+| Boundary enforced by | NSG, by the Azure platform | Kubernetes network policy, by the cluster |
+| A misconfigured workload | still cannot cross the subnet boundary | can, if policy is absent or wrong |
+| Identity | VM managed identity | Entra Workload Identity, federated per service account |
+
+Trust moves from the platform into the cluster. That is a genuine reduction in
+defence depth, and it is why `network_policy` is not an optional input on the
+`aks` module — a precondition rejects `null` outright. Without a policy engine
+every pod reaches every other pod regardless of namespace, and the separation
+this document claims does not exist.
+
+A second consequence is easy to miss. Under Azure CNI Overlay a pod's traffic
+leaving the cluster is **SNATed to its node address**. Every NSG rule written
+against the old tier subnets silently stops matching. The private endpoint NSG
+had to be re-sourced from the AKS node subnet, or every call from a pod to SQL,
+Redis, Key Vault or Storage would have hit the default deny — a failure that
+looks like a data-tier outage and is a network rule.
+
+**dev's cluster is deliberately not highly available**, and the reason is
+arithmetic rather than preference:
+
+```
+3 nodes across 3 zones = 6 vCPU    quota is 4     OVER
+2 nodes                = 4 vCPU    6 on upgrade   OVER
+1 node                 = 2 vCPU    4 on upgrade   fits
+```
+
+AKS adds a surge node during upgrades, so even two nodes would leave a cluster
+that cannot be patched. The `availability_summary` output states the degraded
+posture in plain language so a development cluster never reads as
+production-shaped, and three production guardrails in the `profile` module
+reject a prod environment that is not HA, not private, or on the Free SKU tier.
+
+**Module inventory changed.** `vm` was never built; `aks` replaces it.
+`autoscale` is obsolete as designed — it was VM Scale Set autoscale rules,
+where AKS uses the cluster autoscaler configured on the node pool itself, so
+that behaviour now lives inside the `aks` module. The two load balancers were
+deployed and then destroyed: AKS provisions and manages its own for a
+`Service` of type `LoadBalancer`, so keeping them was roughly $40/month for
+nothing. The `load-balancer` module remains in the repository, unused.
+
+---
+
 ## 7. Open decisions — needed before module 1
 
 **Decision A — Relationship to the existing `cloudcart` config.**

@@ -1,13 +1,15 @@
 # cloudcart — Enterprise 3-Tier Platform on Azure
 
 Production-grade, multi-environment Azure infrastructure built with Terraform.
-Three-tier application topology behind a WAF, with all data services reachable
-only through private endpoints, all egress forced through Azure Firewall, and
-no public IP on any compute resource.
+Three-tier application topology on AKS, with all data services reachable only
+through private endpoints, controlled egress, and no public IP on any compute
+resource.
 
-> **Status: design phase.** The architecture, network plan and repository
-> skeleton are complete. No Terraform has been written yet — modules are built
-> one at a time, each reviewed before the next begins.
+> **Status: dev deployed.** 19 modules built, of which 17 are applied and
+> verified in Azure. Compute is AKS — see
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6b for what moving the tier
+> boundary from subnets into a cluster changes, and why dev's cluster is
+> deliberately not highly available.
 
 ---
 
@@ -49,10 +51,9 @@ terraform/
     ├── storage                  Storage account, private endpoints
     ├── sql                      Azure SQL, Entra-only auth, private endpoint
     ├── redis                    Azure Cache for Redis, private endpoint
-    ├── load-balancer            Internal load balancer
+    ├── load-balancer            Internal and public load balancers (unused since AKS)
     ├── application-gateway      Application Gateway WAF v2
-    ├── vm                       VM Scale Sets
-    ├── autoscale                Autoscale settings
+    ├── aks                      Kubernetes cluster (replaces vm)
     ├── monitor                  Alerts and action groups
     └── recovery-services        Recovery Services vault and backup policies
 ```
@@ -99,10 +100,16 @@ credentials. Both are gitignored.
 
 ---
 
-## Relationship to the repository root
+## Subscription constraints encountered
 
-The repository root contains an earlier `cloudcart` deployment (VM + AKS) on
-`azurerm ~> 3.117` with its own live state. It is a separate architecture on a
-different provider major version and is **not** consumed by this tree. Whether
-it is frozen, migrated or folded in as a fourth tier is open — see
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7, Decision A.
+This platform is deployed on an Azure FreeTrial subscription, which imposed
+three restrictions that shaped real decisions rather than being worked around:
+
+| Constraint | Consequence |
+|---|---|
+| Azure SQL provisioning blocked in East US | Whole platform moved to Central US. See ARCHITECTURE.md §6a. |
+| `Standard_B2s` not permitted in the subscription | AKS nodes use `Standard_D2s_v4`. The only cheap permitted size is ARM, which would require arm64 images. |
+| 4 total regional vCPUs, not raisable on FreeTrial | dev's AKS cluster is a single node and explicitly not HA. Three nodes across three zones is 6 vCPU. |
+
+Each is recorded where the decision was made rather than only here, because the
+reasoning matters more than the outcome.

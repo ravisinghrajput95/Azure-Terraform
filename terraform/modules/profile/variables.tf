@@ -45,6 +45,14 @@ variable "overrides" {
     enable_bastion = optional(bool)
     bastion_sku    = optional(string)
 
+    # Kubernetes
+    aks_sku_tier             = optional(string)
+    aks_private_cluster      = optional(bool)
+    aks_network_policy       = optional(string)
+    enable_user_node_pool    = optional(bool)
+    user_node_pool_min_count = optional(number)
+    user_node_pool_max_count = optional(number)
+
     # Compute
     vm_size                 = optional(string)
     instance_count          = optional(number)
@@ -108,9 +116,9 @@ variable "subscription_vcpu_quota" {
 }
 
 variable "compute_tier_count" {
-  description = "Number of tiers running a scale set. Used with the vCPU quota check, since each tier scales independently and the quota is shared across all of them."
+  description = "Number of independently-scaling compute groups sharing the regional vCPU quota. One for an AKS cluster, whose node pools draw from the same quota; higher only where separate scale sets scale independently of each other. Used by both the vCPU quota assertion and the cost estimate, so an inflated value double-counts both."
   type        = number
-  default     = 2
+  default     = 1
 
   validation {
     condition     = var.compute_tier_count >= 1

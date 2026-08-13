@@ -300,31 +300,45 @@ output "redis_reachable_from" {
 }
 
 ################################################################################
-# Load balancers
+# Kubernetes
 ################################################################################
 
-output "internal_lb_ip" {
-  description = "Private frontend address of the business tier load balancer."
-  value       = module.load_balancer_internal.frontend_ip_address
+output "aks_cluster_name" {
+  description = "AKS cluster name."
+  value       = module.aks.name
 }
 
-output "public_lb_ip" {
-  description = "Public ingress address, when a public load balancer provides ingress in place of Application Gateway."
-  value       = try(module.load_balancer_public[0].frontend_ip_address, null)
+output "aks_fqdn" {
+  description = "API server FQDN."
+  value       = module.aks.fqdn
 }
 
-output "lb_backend_pool_ids" {
-  description = "Backend pool IDs the vm module attaches scale sets to."
-  value = {
-    biz = module.load_balancer_internal.backend_pool_ids["biz"]
-    app = try(module.load_balancer_public[0].backend_pool_ids["app"], null)
-  }
+output "aks_availability_summary" {
+  description = "Plain-language availability posture. dev is deliberately NOT highly available — three nodes across three zones is 6 vCPU against a 4 vCPU trial quota."
+  value       = module.aks.availability_summary
 }
 
-output "lb_probe_detection_seconds" {
-  description = "How long a failed instance keeps receiving traffic, per probe."
-  value = {
-    internal = module.load_balancer_internal.probe_detection_seconds
-    public   = try(module.load_balancer_public[0].probe_detection_seconds, null)
-  }
+output "aks_security_summary" {
+  description = "Consolidated security posture of the cluster."
+  value       = module.aks.security_summary
+}
+
+output "aks_api_server_reachable_from" {
+  description = "Who can reach the Kubernetes API server."
+  value       = module.aks.api_server_reachable_from
+}
+
+output "aks_oidc_issuer_url" {
+  description = "OIDC issuer URL. A federated identity credential on a user-assigned identity references this plus a service account subject, which is what lets a pod authenticate as that identity with no secret."
+  value       = module.aks.oidc_issuer_url
+}
+
+output "aks_kubelet_identity_object_id" {
+  description = "Kubelet identity — the one that pulls images. An ACR pull role assignment goes here, not on the control plane identity."
+  value       = module.aks.kubelet_identity_object_id
+}
+
+output "aks_get_credentials_command" {
+  description = "Command to configure kubectl against this cluster."
+  value       = "az aks get-credentials --resource-group ${module.resource_group.names["app"]} --name ${module.aks.name}"
 }
