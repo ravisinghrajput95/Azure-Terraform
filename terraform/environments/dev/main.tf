@@ -902,7 +902,7 @@ module "monitor" {
 # Deliberately NOT gated on profile.enable_backup. That flag governs whether
 # workloads are protected, and this module never protects anything. The vault
 # and policies are free, so they are deployed and verifiable here, ready for
-# whatever qa, stage or production later put in front of them.
+# whatever qa, stage or prod later put in front of them.
 #
 # LocallyRedundant is explicit: Azure defaults to GeoRedundant, which costs
 # materially more, and the setting cannot be changed once anything is

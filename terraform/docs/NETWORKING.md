@@ -13,9 +13,10 @@ because fixing it means rebuilding subnets and every resource in them.
 |---|---|---|
 | `10.0.0.0/16` | Reserved — future shared hub (firewall, DNS, ExpressRoute gateway) | Reserved |
 | `10.10.0.0/16` | **dev** | Allocated |
-| `10.20.0.0/16` | **test** | Allocated |
+| `10.20.0.0/16` | **qa** | Allocated |
 | `10.30.0.0/16` | **prod** | Allocated |
-| `10.40.0.0/16` – `10.90.0.0/16` | Reserved — future spokes / additional workloads | Reserved |
+| `10.40.0.0/16` | **stage** | Allocated |
+| `10.50.0.0/16` – `10.90.0.0/16` | Reserved — future spokes / additional workloads | Reserved |
 | `10.100.0.0/16`+ | Reserved — on-premises / partner ranges | Do not allocate |
 
 Deliberately **not** used: `10.1.0.0/16`–`10.9.0.0/16`, left as a buffer under
@@ -27,7 +28,13 @@ and VPN client pools.
 ## 2. Subnet plan
 
 The pattern below is identical in every environment; only the second octet
-changes (dev `10`, test `20`, prod `30`). The table shows **prod**.
+changes (dev `10`, qa `20`, prod `30`, stage `40`). The table shows **prod**.
+
+`stage` takes `10.40` from the reserved range rather than a block adjacent to
+`qa`. Prod keeps `10.30` because this document's entire worked subnet plan is
+built on it, and renumbering a deployed-shaped address plan to make the list
+read in order is churn that buys nothing — CIDR blocks are identifiers, not a
+sequence.
 
 | Subnet | CIDR | Size | Usable¹ | NSG | Route table | Notes |
 |---|---|---|---|---|---|---|

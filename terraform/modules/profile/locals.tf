@@ -171,17 +171,18 @@ locals {
     }
 
     ##########################################################################
-    # test — pre-production validation.
+    # qa — functional validation.
     #
     # Adds the WAF in Detection mode so rule tuning happens here rather than
     # against production traffic, and partial zone spread so zone-aware
-    # behaviour is exercised. Still no Azure Firewall: at ~$912/month it is
-    # the single largest line item, and its rules can be validated in prod
-    # behind a change window.
+    # behaviour is exercised. No Azure Firewall: at ~$912/month it is the
+    # single largest line item, and qa's job is to answer "does the
+    # application work", which egress inspection does not change. Firewall
+    # topology is validated in stage instead.
     #
     # NOT deployable on a free subscription.
     ##########################################################################
-    test = {
+    qa = {
       enable_firewall    = false
       firewall_sku_tier  = "Standard"
       enable_nat_gateway = true
@@ -249,6 +250,135 @@ locals {
 
       enable_backup         = true
       backup_retention_days = 14
+    }
+
+    ##########################################################################
+    # stage — pre-production soak.
+    #
+    # The environment that exists to be WRONG about prod cheaply. Its guiding
+    # rule: mirror production on anything STRUCTURAL, and deviate only where
+    # the deviation is purely a matter of scale. Every deviation below is
+    # therefore a capacity choice, never a topology one — because a soak
+    # environment shaped differently from production validates the wrong shape.
+    #
+    # This is why stage, unlike qa, runs the Azure Firewall. Egress through a
+    # firewall with UDRs is a different network than egress through a NAT
+    # Gateway, and it carries the two failure modes that break this topology in
+    # production: a 0.0.0.0/0 UDR on the Application Gateway subnet, and the
+    # same on AzureBastionSubnet. Neither is reachable in an environment that
+    # has no firewall at all, so without stage they would first be exercised in
+    # prod.
+    #
+    # WHAT REMAINS UNVALIDATED, stated plainly rather than implied:
+    #   - Firewall is Standard, not Premium, so IDPS and TLS inspection are
+    #     never exercised (~$365/month cheaper).
+    #   - SQL is General Purpose zone-redundant, not Business Critical, so
+    #     zone redundancy is validated but not BC's failover characteristics.
+    #   - Node size is D2s_v5 rather than D4s_v5, so zone spread and autoscale
+    #     behaviour are exercised but performance figures are not comparable.
+    #
+    # NOT deployable on a free subscription. Cost is close to production.
+    ##########################################################################
+    stage = {
+      # The reason stage exists. Standard rather than Premium: the topology,
+      # the UDRs and the egress rules are what need validating, and those are
+      # identical across the two tiers.
+      enable_firewall    = true
+      firewall_sku_tier  = "Standard"
+      enable_nat_gateway = false
+
+      # Prevention, matching prod. qa runs Detection to tune the rules; stage
+      # runs the tuned rules in the mode prod will use, because a rule set that
+      # has only ever been observed in Detection has never actually blocked
+      # anything.
+      enable_application_gateway       = true
+      application_gateway_sku          = "WAF_v2"
+      waf_mode                         = "Prevention"
+      application_gateway_zones        = ["1", "2", "3"]
+      application_gateway_min_capacity = 2
+      application_gateway_max_capacity = 6
+      enable_public_load_balancer      = false
+
+      enable_bastion = true
+      bastion_sku    = "Standard"
+
+      aks_sku_tier             = "Standard"
+      aks_private_cluster      = true
+      aks_network_policy       = "azure"
+      enable_user_node_pool    = true
+      user_node_pool_min_count = 2
+      user_node_pool_max_count = 6
+
+      # Three nodes across three zones, matching prod's structure at a smaller
+      # size. The zone spread is the property worth validating; the core count
+      # is not.
+      vm_size                 = "Standard_D2s_v5"
+      instance_count          = 3
+      enable_autoscale        = true
+      autoscale_min_instances = 3
+      autoscale_max_instances = 8
+      compute_zones           = ["1", "2", "3"]
+      use_spot_instances      = false
+      os_disk_type            = "Premium_LRS"
+      os_disk_size_gb         = 128
+
+      # Business Critical at half prod's core count, NOT General Purpose.
+      #
+      # Zone redundancy is structural, and on Azure SQL it is a property of the
+      # TIER, not a flag: General Purpose cannot carry it here. Dropping to GP
+      # to save money would therefore have silently dropped zone redundancy
+      # too, which is the one database property stage exists to prove. The
+      # module's own coherence check rejects that combination outright.
+      #
+      # So the deviation from prod is cores, which is capacity, rather than
+      # tier, which is topology. Long-term retention is on because restoring
+      # from an LTR backup is a procedure worth rehearsing before it is needed.
+      sql_sku_name                   = "BC_Gen5_2"
+      sql_zone_redundant             = true
+      sql_backup_retention_days      = 35
+      sql_enable_long_term_retention = true
+
+      enable_redis            = true
+      redis_sku_name          = "Balanced_B1"
+      redis_high_availability = true
+
+      # GZRS matches prod. Replication type determines what a regional outage
+      # actually costs, so a cheaper setting here would validate nothing.
+      storage_replication_type  = "GZRS"
+      storage_enable_versioning = true
+
+      data_plane_public_access_enabled = false
+
+      # The ONE production behaviour stage deliberately does not mirror.
+      #
+      # Purge protection cannot be disabled once enabled, and the naming module
+      # produces a deterministic vault name — so a single stage teardown would
+      # make the environment unrebuildable for the full 90-day retention. A
+      # pre-production environment that cannot be rebuilt has stopped being
+      # useful for its one purpose.
+      #
+      # The consequence is that "purge protection blocks recreation" is a
+      # lesson prod learns on its own. Soft delete retention still matches
+      # prod, so the recovery window itself is exercised.
+      key_vault_purge_protection           = false
+      key_vault_soft_delete_retention_days = 90
+
+      # Locks validate an operational runbook rather than this Terraform, and
+      # they obstruct the rebuild cycle stage depends on.
+      enable_resource_locks = false
+
+      # Tenant-level and per-resource decisions respectively; duplicating
+      # either here doubles the bill without changing what is validated.
+      enable_ddos_protection = false
+      enable_defender        = false
+
+      log_retention_days = 90
+      log_daily_quota_gb = -1
+      enable_vm_insights = true
+      enable_alerts      = true
+
+      enable_backup         = true
+      backup_retention_days = 35
     }
 
     ##########################################################################

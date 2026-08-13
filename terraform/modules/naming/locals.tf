@@ -146,9 +146,10 @@ locals {
   # in the portal. The 3-character form is reserved for names with a hard
   # length cap and no separators (storage accounts).
   environment_abbreviations = {
-    dev  = "dev"
-    test = "tst"
-    prod = "prd"
+    dev   = "dev"
+    qa    = "qa"
+    stage = "stg"
+    prod  = "prd"
   }
 
   environment_short = local.environment_abbreviations[var.environment]

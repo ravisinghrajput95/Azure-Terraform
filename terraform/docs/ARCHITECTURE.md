@@ -350,9 +350,9 @@ already enabled, and AKS backup is a different resource family entirely
 
 The module therefore deploys a vault and its policies and creates **no
 protected items**. Both are free — Azure bills per protected instance — so the
-configuration is deployed and verifiable, ready for whatever qa, stage or
-production put in front of it. The alternative, a module that exists only as
-untested code, was rejected: this platform has already been bitten once by
+configuration is deployed and verifiable, ready for whatever qa, stage or prod
+put in front of it. The alternative, a module that exists only as untested
+code, was rejected: this platform has already been bitten once by
 configuration that looked correct and had never run.
 
 ---

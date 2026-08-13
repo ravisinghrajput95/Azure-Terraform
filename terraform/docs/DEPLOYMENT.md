@@ -200,8 +200,22 @@ resources are still coming up.
 ## 3. Per-environment rollout
 
 ```
-dev  →  validate  →  test  →  soak  →  prod
+dev  →  qa  →  stage  →  prod
 ```
+
+| Environment | Question it answers |
+|---|---|
+| `dev` | Does it deploy at all? Free-tier constrained, single node, not HA. |
+| `qa` | Does the application work? WAF in Detection so rules are tuned here. |
+| `stage` | Does it work the way prod will? Mirrors prod's topology; deviates only on capacity. |
+| `prod` | — |
+
+`stage` runs the Azure Firewall where `qa` does not, and that is the point of
+having both: egress through a firewall with UDRs is a different network from
+egress through a NAT Gateway, and it carries the two traps that break this
+topology — a `0.0.0.0/0` UDR on the Application Gateway subnet, and the same on
+`AzureBastionSubnet`. Neither is reachable in an environment with no firewall,
+so without `stage` they would first be exercised in production.
 
 Identical module code at every stage. Only `terraform.tfvars` differs — SKUs,
 instance counts, zone lists and the cost-posture switches from ARCHITECTURE.md

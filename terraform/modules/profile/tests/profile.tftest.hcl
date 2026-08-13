@@ -620,3 +620,152 @@ run "rejects_production_without_three_zones" {
     terraform_data.validation,
   ]
 }
+
+################################################################################
+# Environment set: dev, qa, stage, prod
+#
+# "test" was renamed to "qa" and "stage" added. The rename matters more than it
+# looks: "test" is now an INVALID environment, and a root module still passing
+# it must fail loudly rather than silently select a default profile.
+################################################################################
+
+run "qa_is_selectable" {
+  command = plan
+
+  variables {
+    environment = "qa"
+  }
+
+  assert {
+    condition     = output.profile.waf_mode == "Detection"
+    error_message = "qa runs the WAF in Detection so rules are tuned before prod traffic meets them."
+  }
+
+  assert {
+    condition     = output.profile.enable_firewall == false
+    error_message = "qa answers whether the application works; egress inspection does not change that, and the firewall is the largest line item."
+  }
+}
+
+run "rejects_the_retired_test_environment" {
+  command = plan
+
+  variables {
+    environment = "test"
+  }
+
+  expect_failures = [var.environment]
+}
+
+################################################################################
+# stage — mirrors prod structurally, deviates only on capacity
+#
+# A soak environment shaped differently from production validates the wrong
+# shape, so these assert the STRUCTURAL properties match prod rather than
+# asserting specific sizes.
+################################################################################
+
+run "stage_mirrors_production_topology" {
+  command = plan
+
+  variables {
+    environment = "stage"
+  }
+
+  # The reason stage exists rather than being a second qa. Egress through a
+  # firewall with UDRs is a different network from egress through a NAT
+  # Gateway, and it carries the two UDR traps that break this topology.
+  assert {
+    condition     = output.profile.enable_firewall == true
+    error_message = "stage must run the firewall, or prod's egress topology is validated nowhere."
+  }
+
+  assert {
+    condition     = output.profile.enable_nat_gateway == false
+    error_message = "Firewall and NAT Gateway are mutually exclusive; the NAT Gateway would be billed and unused."
+  }
+
+  # A rule set only ever observed in Detection has never actually blocked
+  # anything.
+  assert {
+    condition     = output.profile.waf_mode == "Prevention"
+    error_message = "stage must run the WAF in the mode prod uses."
+  }
+
+  assert {
+    condition     = length(output.profile.compute_zones) == 3
+    error_message = "stage must span three zones, like prod."
+  }
+
+  assert {
+    condition     = output.profile.sql_zone_redundant == true
+    error_message = "Zone redundancy is structural and must match prod."
+  }
+
+  assert {
+    condition     = output.profile.storage_replication_type == "GZRS"
+    error_message = "Replication type determines what a regional outage costs, so a cheaper setting would validate nothing."
+  }
+
+  assert {
+    condition     = output.profile.redis_high_availability == true
+    error_message = "HA is what carries the Redis SLA and is structural."
+  }
+}
+
+run "stage_deviates_from_prod_only_on_capacity" {
+  command = plan
+
+  variables {
+    environment = "stage"
+  }
+
+  # Standard rather than Premium: topology and egress rules are identical
+  # across the tiers, IDPS and TLS inspection are not.
+  assert {
+    condition     = output.profile.firewall_sku_tier == "Standard"
+    error_message = "stage deliberately runs the cheaper firewall tier."
+  }
+
+  # Half prod's cores, same TIER. Zone redundancy on Azure SQL is a property
+  # of the tier rather than a flag, so dropping to General Purpose to save
+  # money would silently drop the one database property stage exists to prove.
+  assert {
+    condition     = output.profile.sql_sku_name == "BC_Gen5_2"
+    error_message = "stage deviates from prod on SQL cores, not on SQL tier."
+  }
+
+  # Purge protection cannot be disabled once enabled, and vault names are
+  # deterministic — so enabling it would make one teardown cost 90 days of
+  # unrebuildable environment. This is the single production behaviour stage
+  # does not mirror, and it is deliberate.
+  assert {
+    condition     = output.profile.key_vault_purge_protection == false
+    error_message = "stage must stay rebuildable; purge protection would strand its vault name for the full retention."
+  }
+
+  assert {
+    condition     = output.profile.key_vault_soft_delete_retention_days == 90
+    error_message = "The recovery window still matches prod even though purge protection does not."
+  }
+}
+
+run "stage_satisfies_production_guardrails" {
+  command = plan
+
+  # Not because stage is prod, but because a soak environment failing the
+  # checks prod must pass would not be soaking anything meaningful.
+  variables {
+    environment = "stage"
+  }
+
+  assert {
+    condition     = output.profile.enable_backup && output.profile.enable_alerts
+    error_message = "stage must carry backup and alerting."
+  }
+
+  assert {
+    condition     = output.profile.aks_private_cluster == true
+    error_message = "stage must run a private cluster, like prod."
+  }
+}

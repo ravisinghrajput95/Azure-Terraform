@@ -31,7 +31,8 @@ terraform/
 │
 ├── environments/                One root module per environment
 │   ├── dev/                     10.10.0.0/16
-│   ├── test/                    10.20.0.0/16
+│   ├── qa/                      10.20.0.0/16
+│   ├── stage/                   10.40.0.0/16
 │   └── prod/                    10.30.0.0/16
 │
 └── modules/
