@@ -172,10 +172,12 @@ resource "azurerm_kubernetes_cluster" "this" {
     precondition {
       condition = !local.no_admin_access
       error_message = join(" ", [
-        "local_account_disabled is true but entra_admin_group_object_ids is empty.",
+        "local_account_disabled is true but both admin paths are empty:",
+        "entra_admin_group_object_ids (bound as Kubernetes GROUP subjects) and cluster_admin_principal_ids (Azure RBAC role assignments).",
         "The local account is the only other way in, so the cluster would build successfully and NOBODY could authenticate —",
         "recoverable only by re-enabling the local account through the Azure control plane.",
-        "Supply at least one Entra group."
+        "Note that subscription Owner does NOT substitute: it carries dataActions: [], and Kubernetes authorisation lives entirely in dataActions.",
+        "Supply at least one real Entra GROUP, or grant individuals through cluster_admin_principal_ids."
       ])
     }
 
@@ -250,6 +252,42 @@ resource "azurerm_kubernetes_cluster" "this" {
       error_message = "cost_analysis_enabled requires the Standard or Premium SKU tier."
     }
   }
+}
+
+################################################################################
+# Cluster-admin role assignments
+#
+# This is the path azure_rbac_enabled actually describes: "access is granted
+# through Azure role assignments rather than in-cluster RoleBindings". Without
+# these, the module enabled Azure RBAC and then granted nobody anything under
+# it, leaving access resting entirely on the AAD profile's group bindings.
+#
+# Two things make that a trap rather than a preference:
+#
+#   1. Each entry in entra_admin_group_object_ids binds as a Kubernetes GROUP
+#      subject, matched against the token's `groups` claim. A USER object ID
+#      there is accepted by Azure, creates a binding, and never matches
+#      anything — a user's own object ID appears in the `oid` claim, never in
+#      `groups`.
+#
+#   2. Subscription Owner and Contributor do NOT rescue it. Both carry
+#      `dataActions: []`, and Kubernetes authorisation lives entirely in
+#      dataActions, so an Owner cannot run kubectl against an Azure RBAC
+#      cluster. That reads like a broken cluster and is correct behaviour.
+#
+# Together those produce a cluster that builds successfully, reports healthy,
+# and that nobody can authenticate to — recoverable only by re-enabling the
+# local account through the control plane.
+#
+# for_each is over a statically-known variable, never a resource attribute.
+################################################################################
+
+resource "azurerm_role_assignment" "cluster_admin" {
+  for_each = var.azure_rbac_enabled ? var.cluster_admin_principal_ids : []
+
+  scope                = azurerm_kubernetes_cluster.this.id
+  role_definition_name = "Azure Kubernetes Service RBAC Cluster Admin"
+  principal_id         = each.value
 }
 
 ################################################################################

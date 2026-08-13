@@ -220,3 +220,85 @@ run "rejects_system_pool_taint_with_no_user_pool" {
 
   expect_failures = [azurerm_kubernetes_cluster.this]
 }
+
+################################################################################
+# Admin access paths
+#
+# The failure these guard is total and silent: a cluster that builds, reports
+# healthy, and that nobody can authenticate to.
+################################################################################
+
+run "rejects_disabled_local_account_with_neither_admin_path" {
+  command = plan
+
+  variables {
+    local_account_disabled       = true
+    entra_admin_group_object_ids = []
+    cluster_admin_principal_ids  = []
+  }
+
+  expect_failures = [azurerm_kubernetes_cluster.this]
+}
+
+run "accepts_azure_rbac_admins_without_any_entra_group" {
+  command = plan
+
+  # The real dev topology. This tenant has no Entra group, so cluster-admin is
+  # granted by Azure RBAC role assignment — which, unlike the AAD group
+  # binding, accepts a user object ID.
+  variables {
+    local_account_disabled       = true
+    entra_admin_group_object_ids = []
+    cluster_admin_principal_ids  = ["00000000-0000-0000-0000-00000000eeee"]
+  }
+
+  assert {
+    condition     = length(output.cluster_admin_principal_ids) == 1
+    error_message = "An Azure RBAC role assignment is a sufficient admin path on its own."
+  }
+
+  assert {
+    condition     = strcontains(output.admin_access_summary, "1 principal(s) hold Azure RBAC cluster-admin")
+    error_message = "The admin path actually in use must be stated in plain language."
+  }
+}
+
+run "warns_when_azure_rbac_has_no_role_assignment" {
+  command = plan
+
+  # Groups supplied but no data-plane role assigned, so access rests entirely
+  # on those IDs being real GROUPS. Correct if they are; a locked-out cluster
+  # if any is a user object ID. Terraform cannot tell, so it reports.
+  variables {
+    azure_rbac_enabled           = true
+    entra_admin_group_object_ids = ["00000000-0000-0000-0000-00000000aaaa"]
+    cluster_admin_principal_ids  = []
+  }
+
+  assert {
+    condition     = strcontains(output.admin_access_summary, "must be GROUPS")
+    error_message = "The group-versus-user trap must be stated, since it cannot be validated."
+  }
+
+  assert {
+    condition     = strcontains(output.admin_access_summary, "Owner does NOT grant kubectl access")
+    error_message = "Owner carries no dataActions; assuming it rescues access is the natural wrong guess."
+  }
+}
+
+run "assigns_no_data_plane_role_when_azure_rbac_is_disabled" {
+  command = plan
+
+  # Without Azure RBAC the role assignment would grant nothing, so it is not
+  # created rather than created and inert.
+  variables {
+    azure_rbac_enabled           = false
+    entra_admin_group_object_ids = ["00000000-0000-0000-0000-00000000aaaa"]
+    cluster_admin_principal_ids  = ["00000000-0000-0000-0000-00000000eeee"]
+  }
+
+  assert {
+    condition     = length(output.cluster_admin_principal_ids) == 0
+    error_message = "Azure RBAC role assignments are meaningless when Azure RBAC is off."
+  }
+}

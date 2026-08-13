@@ -106,6 +106,21 @@ output "local_account_disabled" {
   value       = azurerm_kubernetes_cluster.this.local_account_disabled
 }
 
+output "cluster_admin_principal_ids" {
+  description = "Principals holding Azure RBAC cluster-admin on this cluster. Distinct from entra_admin_group_object_ids, which binds Kubernetes GROUP subjects and silently matches nothing when given a user object ID."
+  value       = var.azure_rbac_enabled ? var.cluster_admin_principal_ids : []
+}
+
+output "admin_access_summary" {
+  description = "How an operator actually authenticates to the API server, in plain language. Reported because a cluster nobody can reach looks identical to one that works until someone tries."
+  value = join(" ", compact([
+    var.local_account_disabled ? "Local account disabled; Entra ID is the only way in." : "WARNING: the local admin account is ENABLED and bypasses Entra ID entirely.",
+    local.has_rbac_admins ? "${length(var.cluster_admin_principal_ids)} principal(s) hold Azure RBAC cluster-admin." : "",
+    local.has_entra_group_admins ? "${length(var.entra_admin_group_object_ids)} Entra group binding(s) — these must be GROUPS; a user object ID binds successfully and never matches." : "",
+    local.azure_rbac_without_role_assignments ? "WARNING: Azure RBAC is the authorisation path but no data-plane role is assigned, so access rests entirely on those group IDs being real groups. Subscription Owner does NOT grant kubectl access — it carries no dataActions." : "",
+  ]))
+}
+
 output "security_summary" {
   description = "Consolidated posture, so the interacting settings can be reviewed without reading the configuration."
   value = join(" ", compact([

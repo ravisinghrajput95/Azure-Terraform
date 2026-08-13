@@ -12,4 +12,9 @@ subscription_vcpu_quota = 4
 
 deployer_ip_addresses = ["<your-public-ip>"]
 
-aks_admin_group_object_ids = ["<entra-group-object-id>"]
+# Entra GROUP object IDs only — a user object ID binds and never matches.
+aks_admin_group_object_ids = []
+
+# Users, groups or service principals, granted via Azure RBAC. Subscription
+# Owner does NOT grant kubectl access.
+aks_cluster_admin_principal_ids = ["<your-object-id>"]

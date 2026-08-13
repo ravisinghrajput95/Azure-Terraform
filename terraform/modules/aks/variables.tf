@@ -255,8 +255,36 @@ variable "local_account_disabled" {
 }
 
 variable "entra_admin_group_object_ids" {
-  description = "Entra group object IDs granted cluster-admin. With local_account_disabled these are the ONLY way in, so an empty list locks everyone out of a cluster that otherwise builds successfully."
+  description = <<-EOT
+    Entra GROUP object IDs granted cluster-admin through the AKS AAD profile.
+
+    These must be groups. AKS binds them as Kubernetes `Group` subjects, matched
+    against the `groups` claim in the caller's token. A USER object ID here is
+    accepted by Azure, creates a binding, and never matches anything — a user's
+    own object ID appears in the `oid` claim, never in `groups`. Terraform
+    cannot tell the two apart without a directory lookup, so this cannot be
+    validated here; grant individual users through cluster_admin_principal_ids
+    instead.
+  EOT
   type        = list(string)
+  default     = []
+}
+
+variable "cluster_admin_principal_ids" {
+  description = <<-EOT
+    Object IDs granted cluster-admin through AZURE RBAC, by role assignment of
+    "Azure Kubernetes Service RBAC Cluster Admin" at the cluster scope.
+
+    This is the path azure_rbac_enabled actually describes, and unlike
+    entra_admin_group_object_ids it accepts users, groups and service
+    principals alike.
+
+    Worth knowing: subscription Owner and Contributor do NOT grant Kubernetes
+    API access. Both carry `dataActions: []`, and Kubernetes authorisation
+    lives entirely in dataActions. An Owner who cannot run kubectl is the
+    expected behaviour, not a misconfiguration.
+  EOT
+  type        = set(string)
   default     = []
 }
 

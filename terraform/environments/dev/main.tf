@@ -826,8 +826,12 @@ module "aks" {
 
   # Entra ID only. The local admin account authenticates with a certificate
   # that cannot be rotated or attributed to a person.
-  local_account_disabled       = true
+  local_account_disabled = true
+  # Groups bind as Kubernetes Group subjects; individuals cannot. This
+  # subscription has no Entra group, so the deploying user is granted through
+  # the Azure RBAC path instead — where a user object ID actually works.
   entra_admin_group_object_ids = var.aks_admin_group_object_ids
+  cluster_admin_principal_ids  = toset(var.aks_cluster_admin_principal_ids)
   azure_rbac_enabled           = true
 
   workload_identity_enabled = true

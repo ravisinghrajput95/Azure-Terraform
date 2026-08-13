@@ -29,7 +29,22 @@ locals {
 ################################################################################
 
 locals {
-  no_admin_access = var.local_account_disabled && length(var.entra_admin_group_object_ids) == 0
+  # Two independent ways to reach the API server as an admin, and with the
+  # local account disabled at least one must be populated:
+  #
+  #   entra_admin_group_object_ids  AAD profile, bound as Kubernetes GROUP
+  #                                 subjects — groups only
+  #   cluster_admin_principal_ids   Azure RBAC role assignment — users, groups
+  #                                 or service principals
+  #
+  # Neither is validated for correctness beyond being non-empty. A user object
+  # ID in the group list is accepted by Azure and silently matches nothing,
+  # and Terraform cannot distinguish a user from a group without a directory
+  # lookup.
+  has_entra_group_admins = length(var.entra_admin_group_object_ids) > 0
+  has_rbac_admins        = length(var.cluster_admin_principal_ids) > 0
+
+  no_admin_access = var.local_account_disabled && !local.has_entra_group_admins && !local.has_rbac_admins
 
   # A public API server with no IP restriction exposes the Kubernetes control
   # plane to the entire internet. Authentication still applies, but so does
@@ -37,7 +52,11 @@ locals {
   api_server_open_to_internet = !var.private_cluster_enabled && length(local.effective_authorized_ip_ranges) == 0
 
   # Azure RBAC requires Entra integration to be configured at all.
-  rbac_without_entra = var.azure_rbac_enabled && length(var.entra_admin_group_object_ids) == 0
+  # Azure RBAC is the authorisation path but nobody holds a data-plane role, so
+  # access rests entirely on every entry in the group list being a real Entra
+  # GROUP. Reported rather than rejected: real groups make this correct, and
+  # Terraform cannot tell whether they are.
+  azure_rbac_without_role_assignments = var.azure_rbac_enabled && !local.has_rbac_admins
 
   # AKS appends the cluster's own egress address to the API server allowlist
   # only when it owns the outbound path. With a user-assigned NAT Gateway or a

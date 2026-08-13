@@ -130,7 +130,13 @@ variable "sql_entra_admin_is_group" {
 ################################################################################
 
 variable "aks_admin_group_object_ids" {
-  description = "Entra group object IDs granted cluster-admin on AKS. With the local account disabled these are the ONLY way in, so an empty list produces a cluster nobody can authenticate to. Defaults to the deploying user's own object ID, which is acceptable in a personal subscription and a governance weakness anywhere else — prefer a group."
+  description = "Entra GROUP object IDs granted cluster-admin through the AKS AAD profile. Must be groups: AKS binds them as Kubernetes Group subjects matched against the token's `groups` claim, so a user object ID here binds successfully and never matches anything. Individual people belong in aks_cluster_admin_principal_ids."
+  type        = list(string)
+  default     = []
+}
+
+variable "aks_cluster_admin_principal_ids" {
+  description = "Object IDs granted cluster-admin through Azure RBAC. Accepts users, groups and service principals alike, unlike the group list above. A personal subscription with no Entra group uses this; anywhere with a directory should prefer a group. Note that subscription Owner does NOT grant kubectl access — it carries no dataActions, and Kubernetes authorisation lives entirely there."
   type        = list(string)
   default     = []
 }
