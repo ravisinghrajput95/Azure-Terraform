@@ -818,6 +818,12 @@ module "aks" {
   private_cluster_enabled         = module.profile.aks_private_cluster
   api_server_authorized_ip_ranges = [for ip in var.deployer_ip_addresses : "${ip}/32"]
 
+  # The nodes egress through the NAT Gateway, so the API server allowlist has to
+  # admit the gateway's public IP as well as the operator's. AKS only appends
+  # its own egress address when it owns the outbound path, which with
+  # userAssignedNATGateway it does not — see the module precondition.
+  node_egress_ip_ranges = ["${module.networking.nat_gateway_public_ip}/32"]
+
   # Entra ID only. The local admin account authenticates with a certificate
   # that cannot be rotated or attributed to a person.
   local_account_disabled       = true

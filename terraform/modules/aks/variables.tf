@@ -216,7 +216,30 @@ variable "private_cluster_enabled" {
 }
 
 variable "api_server_authorized_ip_ranges" {
-  description = "Public CIDRs permitted to reach the API server. Only meaningful on a public cluster. An empty list on a public cluster leaves the Kubernetes control plane open to the entire internet."
+  description = "Public CIDRs permitted to reach the API server. Only meaningful on a public cluster. An empty list on a public cluster leaves the Kubernetes control plane open to the entire internet. Operator addresses only — the cluster's own egress address belongs in node_egress_ip_ranges."
+  type        = list(string)
+  default     = []
+}
+
+variable "node_egress_ip_ranges" {
+  description = <<-EOT
+    Public CIDRs the cluster's own nodes egress from, merged into the API server
+    allowlist.
+
+    Required whenever the API server is public, restricted by an allowlist, and
+    egress is self-managed (outbound_type userDefinedRouting or
+    userAssignedNATGateway). AKS appends the cluster's egress address to the
+    allowlist automatically ONLY when it owns the outbound path itself
+    (loadBalancer with managed IPs, or managedNATGateway). With a user-assigned
+    NAT Gateway or a UDR it does not, and nothing in the plan says so.
+
+    Omitting it produces a cluster that provisions for ~15 minutes and then
+    crash-loops: kubelet cannot reach its own API server, the vmssCSE bootstrap
+    times out with exit code 51, and AKS deletes and recreates the node roughly
+    every 14 minutes indefinitely. The allowlist blackholes unauthorised sources
+    rather than refusing them, so the only symptom is a curl that transfers zero
+    bytes.
+  EOT
   type        = list(string)
   default     = []
 }

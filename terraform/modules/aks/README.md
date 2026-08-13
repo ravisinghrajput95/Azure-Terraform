@@ -53,6 +53,54 @@ This platform attaches a NAT Gateway in the `networking` module, so
 
 ---
 
+## Self-managed egress must be declared to the API server allowlist
+
+The worst failure this module can produce, because Azure reports no error
+against the cluster at all.
+
+On a public cluster restricted by `api_server_authorized_ip_ranges`, the nodes
+reach the API server over its **public** endpoint, egressing from whatever
+address the outbound path gives them. AKS appends that address to the allowlist
+automatically **only when it owns the outbound path**:
+
+| `outbound_type` | Egress address owned by | Appended automatically |
+|---|---|---|
+| `loadBalancer` (managed IPs) | AKS | yes |
+| `managedNATGateway` | AKS | yes |
+| `userAssignedNATGateway` | you | **no** |
+| `userDefinedRouting` | you | **no** |
+
+In the bottom two rows the egress address is yours to declare, via
+`node_egress_ip_ranges`. Omit it and the nodes egress from an address their own
+API server rejects:
+
+```
+cluster provisions ~15 min → kubelet cannot register
+  → vmssCSE bootstrap times out, exit code 51
+  → AKS deletes and recreates the node, every ~14 minutes, indefinitely
+```
+
+`provisioningState` sits at `Updating` and the cluster never converges. The
+allowlist **blackholes** unauthorised sources rather than refusing them, so the
+only symptom is a curl that transfers zero bytes for two minutes — which is why
+this is a precondition rather than something to notice in a plan.
+
+`api_server_authorized_ip_ranges` and `node_egress_ip_ranges` are separate
+inputs, merged by the module, so that neither can be silently dropped by
+editing the other.
+
+```hcl
+outbound_type                   = "userAssignedNATGateway"
+api_server_authorized_ip_ranges = [for ip in var.deployer_ip_addresses : "${ip}/32"]
+node_egress_ip_ranges           = ["${module.networking.nat_gateway_public_ip}/32"]
+```
+
+Note that operator addresses are usually residential and change without notice.
+A cluster that was reachable last week can reject you today; that locks out
+`kubectl`, but unlike the above it does not harm the cluster.
+
+---
+
 ## Azure CNI Overlay
 
 Pods draw addresses from `pod_cidr`, routed inside the cluster; the subnet
@@ -108,6 +156,7 @@ module "aks" {
 
   private_cluster_enabled         = module.profile.aks_private_cluster
   api_server_authorized_ip_ranges = ["203.0.113.4/32"]
+  node_egress_ip_ranges           = ["${module.networking.nat_gateway_public_ip}/32"]
 
   local_account_disabled       = true
   entra_admin_group_object_ids = var.aks_admin_group_object_ids
@@ -128,7 +177,8 @@ module "aks" {
 | `network_plugin_mode` | `"overlay"` | |
 | `outbound_type` | `"userAssignedNATGateway"` | Must match reality. |
 | `private_cluster_enabled` | `false` | |
-| `api_server_authorized_ip_ranges` | `[]` | Empty on a public cluster = open internet. |
+| `api_server_authorized_ip_ranges` | `[]` | Operator addresses. Empty on a public cluster = open internet. |
+| `node_egress_ip_ranges` | `[]` | The cluster's **own** egress address, merged into the allowlist. Required with self-managed egress — see above. |
 | `local_account_disabled` | `true` | |
 | `entra_admin_group_object_ids` | `[]` | The only way in when local is disabled. |
 | `workload_identity_enabled` | `true` | |

@@ -60,7 +60,7 @@ resource "azurerm_kubernetes_cluster" "this" {
   }
 
   api_server_access_profile {
-    authorized_ip_ranges = var.private_cluster_enabled ? null : var.api_server_authorized_ip_ranges
+    authorized_ip_ranges = var.private_cluster_enabled ? null : local.effective_authorized_ip_ranges
   }
 
   private_cluster_enabled = var.private_cluster_enabled
@@ -186,6 +186,20 @@ resource "azurerm_kubernetes_cluster" "this" {
         "The Kubernetes API server would be reachable from the entire internet.",
         "Authentication still applies, but so does every authentication bypass ever found in an API server.",
         "Either set private_cluster_enabled, or supply an IP allowlist."
+      ])
+    }
+
+    precondition {
+      condition = !local.nodes_locked_out_of_api_server
+      error_message = join(" ", [
+        "outbound_type is \"${var.outbound_type}\", the API server is public and restricted by an allowlist,",
+        "but node_egress_ip_ranges is empty.",
+        "AKS appends the cluster's egress address to the allowlist automatically only when it owns the outbound path",
+        "(loadBalancer with managed IPs, or managedNATGateway) — with a user-assigned NAT Gateway or a UDR it does not.",
+        "The nodes would egress from an address their own API server rejects, so kubelet could never register:",
+        "the cluster provisions for ~15 minutes, the vmssCSE bootstrap times out with exit code 51,",
+        "and AKS then deletes and recreates the node roughly every 14 minutes indefinitely.",
+        "Supply the egress address — for a user-assigned NAT Gateway that is the gateway's public IP."
       ])
     }
 

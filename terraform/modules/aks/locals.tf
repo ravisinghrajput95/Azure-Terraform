@@ -34,10 +34,31 @@ locals {
   # A public API server with no IP restriction exposes the Kubernetes control
   # plane to the entire internet. Authentication still applies, but so does
   # every authentication bypass ever found in an API server.
-  api_server_open_to_internet = !var.private_cluster_enabled && length(var.api_server_authorized_ip_ranges) == 0
+  api_server_open_to_internet = !var.private_cluster_enabled && length(local.effective_authorized_ip_ranges) == 0
 
   # Azure RBAC requires Entra integration to be configured at all.
   rbac_without_entra = var.azure_rbac_enabled && length(var.entra_admin_group_object_ids) == 0
+
+  # AKS appends the cluster's own egress address to the API server allowlist
+  # only when it owns the outbound path. With a user-assigned NAT Gateway or a
+  # UDR the egress address is ours to declare, and omitting it locks the nodes
+  # out of their own control plane.
+  self_managed_egress = contains(["userDefinedRouting", "userAssignedNATGateway"], var.outbound_type)
+
+  api_server_restricted = !var.private_cluster_enabled && length(var.api_server_authorized_ip_ranges) > 0
+
+  nodes_locked_out_of_api_server = (
+    local.api_server_restricted
+    && local.self_managed_egress
+    && length(var.node_egress_ip_ranges) == 0
+  )
+
+  # Operator addresses and the cluster's own egress address are separate inputs
+  # so that neither can be silently dropped by editing the other.
+  effective_authorized_ip_ranges = distinct(concat(
+    var.api_server_authorized_ip_ranges,
+    var.node_egress_ip_ranges,
+  ))
 }
 
 ################################################################################

@@ -31,14 +31,18 @@ output "node_resource_group" {
 # Identity
 ################################################################################
 
+# The three identity outputs below index computed nested blocks. Azure always
+# populates them, but a mocked provider returns empty lists, which would make
+# the module's preconditions untestable. try() keeps them evaluable under test
+# without changing what they report against a real cluster.
 output "principal_id" {
   description = "Control plane managed identity. Grant this access when the cluster itself must reach an Azure resource — attaching an ACR, or managing a load balancer in another resource group."
-  value       = azurerm_kubernetes_cluster.this.identity[0].principal_id
+  value       = try(azurerm_kubernetes_cluster.this.identity[0].principal_id, null)
 }
 
 output "kubelet_identity_object_id" {
   description = "Kubelet identity, distinct from the control plane identity. This is the one that pulls images, so an ACR pull role assignment goes here rather than on principal_id — a common and confusing mix-up."
-  value       = azurerm_kubernetes_cluster.this.kubelet_identity[0].object_id
+  value       = try(azurerm_kubernetes_cluster.this.kubelet_identity[0].object_id, null)
 }
 
 output "oidc_issuer_url" {
@@ -48,7 +52,7 @@ output "oidc_issuer_url" {
 
 output "key_vault_secrets_provider_identity" {
   description = "Object ID of the Key Vault CSI driver's identity, or null when the add-on is disabled. Grant this Key Vault Secrets User so pods can mount secrets rather than holding Kubernetes Secrets, which are only base64-encoded at rest."
-  value       = var.key_vault_secrets_provider_enabled ? azurerm_kubernetes_cluster.this.key_vault_secrets_provider[0].secret_identity[0].object_id : null
+  value       = var.key_vault_secrets_provider_enabled ? try(azurerm_kubernetes_cluster.this.key_vault_secrets_provider[0].secret_identity[0].object_id, null) : null
 }
 
 ################################################################################
@@ -83,8 +87,13 @@ output "api_server_reachable_from" {
   value = var.private_cluster_enabled ? (
     "Private endpoint only — kubectl works from inside the VNet or through Bastion, not from an operator machine."
     ) : (
-    "Public endpoint restricted to ${length(var.api_server_authorized_ip_ranges)} IP range(s)."
+    "Public endpoint restricted to ${length(local.effective_authorized_ip_ranges)} IP range(s), of which ${length(var.node_egress_ip_ranges)} is the cluster's own egress."
   )
+}
+
+output "api_server_authorized_ip_ranges" {
+  description = "The allowlist actually applied to the API server: operator addresses merged with the cluster's own egress address. Reported because the second half is invisible in the calling configuration and its absence crash-loops the node pool rather than failing the apply."
+  value       = var.private_cluster_enabled ? [] : local.effective_authorized_ip_ranges
 }
 
 output "network_policy" {
@@ -100,7 +109,7 @@ output "local_account_disabled" {
 output "security_summary" {
   description = "Consolidated posture, so the interacting settings can be reviewed without reading the configuration."
   value = join(" ", compact([
-    var.private_cluster_enabled ? "Private API server." : "Public API server with ${length(var.api_server_authorized_ip_ranges)} allowed range(s).",
+    var.private_cluster_enabled ? "Private API server." : "Public API server with ${length(local.effective_authorized_ip_ranges)} allowed range(s).",
     var.local_account_disabled ? "Local admin account disabled; Entra ID only." : "WARNING: local admin account is ENABLED.",
     var.network_policy != null ? "Network policy: ${var.network_policy}." : "WARNING: no network policy — every pod can reach every other pod.",
     var.workload_identity_enabled ? "Workload identity enabled." : "Workload identity disabled.",

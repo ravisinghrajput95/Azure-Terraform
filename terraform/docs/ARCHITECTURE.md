@@ -1,6 +1,9 @@
 # Architecture — cloudcart 3-Tier Platform
 
-Status: **design, pre-implementation**. No Terraform written yet.
+Status: **dev deployed**. This document is the design record — it keeps the
+decisions and the rejected alternatives, including ones later overtaken by
+events (§6a, §6b). For what is currently built and applied, see
+[`../README.md`](../README.md).
 
 ---
 
@@ -415,6 +418,30 @@ against the old tier subnets silently stops matching. The private endpoint NSG
 had to be re-sourced from the AKS node subnet, or every call from a pod to SQL,
 Redis, Key Vault or Storage would have hit the default deny — a failure that
 looks like a data-tier outage and is a network rule.
+
+The same "the egress address is not what you wrote down" trap has a third form,
+and this one cost a cluster. On a public cluster restricted by an API server
+allowlist, the **nodes** reach their own control plane over the public endpoint.
+AKS appends the cluster's egress address to that allowlist automatically only
+when it owns the outbound path — `loadBalancer` with managed IPs, or
+`managedNATGateway`. This platform egresses through a NAT Gateway created by the
+`networking` module, so `outbound_type` is `userAssignedNATGateway` and the
+append does not happen. The allowlist held only the operator's address, the
+nodes egressed from the NAT Gateway's, and kubelet was refused by the very API
+server it was trying to join.
+
+Nothing surfaces this. The apply runs for fifteen minutes; the cluster reports
+`provisioningState: Updating` indefinitely; the node bootstrap (`vmssCSE`) times
+out with exit code 51 and AKS deletes and recreates the node every ~14 minutes
+forever. The allowlist blackholes unauthorised sources rather than refusing
+them, so the only evidence is a `curl` that transferred zero bytes. The `aks`
+module now takes the cluster's egress address as a separate `node_egress_ip_ranges`
+input and rejects the combination at plan time, because there is no cheaper
+place to catch it.
+
+A related but milder hazard: operator addresses are residential and change
+without notice. That locks out `kubectl` rather than the cluster, but it makes
+the allowlist a value that drifts on its own.
 
 **dev's cluster is deliberately not highly available**, and the reason is
 arithmetic rather than preference:
