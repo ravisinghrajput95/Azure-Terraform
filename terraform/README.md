@@ -5,7 +5,7 @@ Three-tier application topology on AKS, with all data services reachable only
 through private endpoints, controlled egress, and no public IP on any compute
 resource.
 
-> **Status: dev deployed.** 19 modules built, of which 17 are applied and
+> **Status: dev deployed.** 20 modules built, of which 19 are applied and
 > verified in Azure. Compute is AKS — see
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6b for what moving the tier
 > boundary from subnets into a cluster changes, and why dev's cluster is

@@ -156,7 +156,15 @@ locals {
       log_retention_days = 30
       log_daily_quota_gb = 0.5
       enable_vm_insights = true
-      enable_alerts      = false
+
+      # Alerting is ON in dev, unlike backup and locks above, because it is the
+      # one protection here that is nearly free: the AKS metrics alerted on are
+      # free platform metrics, action groups cost nothing, and the rules
+      # themselves are cents per month. It stays on mainly so the alerting
+      # configuration is exercised somewhere before prod depends on it — an
+      # alert rule that was never going to fire looks identical to one that
+      # works.
+      enable_alerts = true
 
       enable_backup         = false
       backup_retention_days = 7

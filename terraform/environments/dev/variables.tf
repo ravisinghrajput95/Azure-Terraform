@@ -40,6 +40,12 @@ variable "owner" {
   type        = string
 }
 
+variable "alert_email_address" {
+  description = "Where alert notifications are delivered. Defaults to owner, which is already an accountable address — set this only where alerts should go somewhere the ownership tag should not, such as a shared rota mailbox."
+  type        = string
+  default     = null
+}
+
 variable "cost_center" {
   description = "Chargeback code."
   type        = string

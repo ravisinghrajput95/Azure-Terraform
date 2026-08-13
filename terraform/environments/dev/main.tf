@@ -842,3 +842,51 @@ module "diagnostics_aks" {
   target_resource_id         = module.aks.id
   log_analytics_workspace_id = module.log_analytics.id
 }
+
+################################################################################
+# Alerting
+#
+# Deployed last, after everything it observes exists, so bringing the
+# environment up does not fire alerts about resources that are still coming up.
+#
+# Lands in the monitoring resource group rather than the app group, so
+# destroying the app stack leaves the alerting — and its history — intact.
+#
+# count comes from profile, which is pure computation over variables, so it
+# stays statically known and survives a cold apply.
+################################################################################
+
+module "monitor" {
+  source = "../../modules/monitor"
+
+  count = module.profile.enable_alerts ? 1 : 0
+
+  action_group_name       = module.naming.names.action_group
+  action_group_short_name = "ccrt-${local.environment}"
+  resource_group_name     = module.resource_group.names["mon"]
+  location                = var.location
+  tags                    = module.tags.tags
+
+  # owner is already an accountable address, so alerting works without a second
+  # place to keep an email in sync.
+  email_receivers = {
+    owner = coalesce(var.alert_email_address, var.owner)
+  }
+
+  cluster_id        = module.aks.id
+  alert_name_prefix = "alrt-${module.naming.base}"
+
+  # dev's system pool has autoscaling off, so the cluster autoscaler component
+  # is not running and publishes none of its metrics. A rule on one of them
+  # would be created, look healthy, and never fire.
+  cluster_autoscaler_enabled = module.profile.enable_autoscale
+
+  # Measured, not guessed. A healthy single-node dev cluster runs a standing 2
+  # pods in Pending — DaemonSet replicas with no second node to land on — while
+  # 25 run normally. A threshold of 0 would therefore fire permanently from the
+  # moment it deployed, which disables an alert as effectively as never firing.
+  # 3 is the first value that means something changed.
+  threshold_overrides = {
+    pods-pending = 3
+  }
+}

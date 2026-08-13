@@ -342,3 +342,22 @@ output "aks_get_credentials_command" {
   description = "Command to configure kubectl against this cluster."
   value       = "az aks get-credentials --resource-group ${module.resource_group.names["app"]} --name ${module.aks.name}"
 }
+
+################################################################################
+# Alerting
+################################################################################
+
+output "alerting_coverage" {
+  description = "Alerting posture in plain language, including the degraded states. Null when alerts are disabled for this environment."
+  value       = one(module.monitor[*].coverage_summary)
+}
+
+output "alert_metrics_monitored" {
+  description = "Map of alert key to the AKS metric it watches, for confirming coverage without opening the portal."
+  value       = one(module.monitor[*].metrics_monitored)
+}
+
+output "alert_action_group_id" {
+  description = "Action group any additional alert rule should attach to."
+  value       = one(module.monitor[*].action_group_id)
+}
