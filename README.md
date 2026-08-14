@@ -84,6 +84,7 @@ test the preconditions, not the provider: a test asserting that
 
 | Document | Contents |
 |---|---|
+| [`LICENSE`](LICENSE) | MIT |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Conventions that are load-bearing rather than stylistic, and the failures behind them |
 | [`SECURITY.md`](SECURITY.md) | Security posture, and the weaknesses deliberately accepted |
 | [`bootstrap/README.md`](bootstrap/README.md) | Why the backend runs on local state, and how it was adopted by import |
@@ -126,3 +127,15 @@ constraints changed real decisions rather than being worked around:
 The interesting part is not that the constraints existed. It is that verifying
 a service can be provisioned *for this subscription in this region* before
 building on it turned a 28-resource rebuild into a one-line change.
+
+---
+
+## License
+
+[MIT](LICENSE). Use it, fork it, ship it.
+
+The Terraform is reusable; the **numbers are not**. Every quota, price and
+measurement here was taken from one FreeTrial subscription in Central US on
+2026-08-14. Costs change, quotas differ per subscription, and regional service
+restrictions are invisible until an apply fails — which is the whole point of
+§6a. Re-measure against your own subscription before relying on any of it.
