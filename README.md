@@ -1,16 +1,72 @@
 # Azure-Terraform
 
-Enterprise-grade, multi-environment Azure infrastructure built with Terraform:
-a three-tier application platform behind a WAF, with all data services reachable
-only through private endpoints, all egress via a controlled path, and no public
-IP on any compute resource.
+Multi-environment Azure platform in Terraform: a three-tier application
+topology on AKS, behind a WAF, with every data service reachable only through
+private endpoints, controlled egress, and no public IP on any compute resource.
+
+Four environments — `dev`, `qa`, `stage`, `prod` — built from 22 shared modules
+and differentiated by variables rather than by code.
+
+> ### Status: nothing is currently deployed
+>
+> `dev` was built, verified against the live Azure API, and **decommissioned on
+> 2026-08-14** to stop spend. `qa`, `stage` and `prod` are complete, validate
+> and plan, and **have never been applied** — the subscription cannot hold
+> them.
+>
+> | Env | State | Why not running |
+> |---|---|---|
+> | `dev` | Was deployed and verified; destroyed | ~$212/month against a $200 credit |
+> | `qa` | Plans, 146 resources | Needs 6 vCPU steady; regional limit is **4** |
+> | `stage` | Plans, 143 resources | 10 vCPU steady, ~$2,148/month |
+> | `prod` | Plans, 146 resources | 24 vCPU steady, ~$3,242/month |
+>
+> Each README states plainly which of its claims are observations and which are
+> claims about a plan. That distinction is the point of this repository.
+
+---
+
+## What is actually interesting here
+
+Not the resource count. This platform is built around a single idea:
+
+**In Azure, the dangerous failures are the ones that succeed.**
+
+A metric alert on a metric that does not exist is *accepted*. A firewall rule
+that can never match is *accepted*. A cluster-admin binding that matches nobody
+provisions cleanly and reports healthy. In every case Terraform is green, the
+portal is green, and the control does nothing — and you find out during the
+incident it was supposed to catch.
+
+So every module carries `precondition` blocks for exactly one class of problem:
+**configuration Azure accepts and then does not act on.** The bar is not "could
+this be wrong" but "would being wrong be invisible".
+
+### Real examples, all found by querying Azure rather than trusting Terraform
+
+| Found | What was actually happening |
+|---|---|
+| Cluster admin bound to nobody | A *user* object ID sat in `aks_admin_group_object_ids`, which AKS binds as a Kubernetes **group** subject. Valid GUID, accepted, matched nothing. With local accounts disabled, **no one could reach the cluster** |
+| Alert with zero data points | A rule on `cluster_autoscaler_unschedulable_pods_count` deployed cleanly — the autoscaler was off, so the metric was never published |
+| Documented query matched nothing | Microsoft's own daily-cap query filters on `Operation`, which holds a **GUID** on this workspace. It returned 0 rows on a day the cap was genuinely hit; the replacement returned 1 |
+| Telemetry silently lost every day | `kube-audit` was **995 MB/day against a 512 MB/day cap** — the workspace hit the cap daily and dropped everything after, blinding every alert at once |
+| Redis unreachable by design | The private-endpoint NSG allowed `6380` — Azure *Cache* for Redis. This platform runs Azure **Managed** Redis, on `10000`. Every pod→Redis call would have hit the deny |
+| A cluster that crash-looped forever | Nodes egressed from a NAT Gateway address its own API server allowlist did not contain. `vmssCSE` timed out and AKS recreated the node every ~14 minutes, indefinitely |
+| State readable without RBAC | An 88-character shared key enumerated every environment's state, bypassing RBAC and attributable to nobody |
+
+Each is now a precondition, a test, or both — and each is written up where the
+decision lives, not only here.
+
+---
+
+## Layout
 
 ```
 bootstrap/           Phase 0 — the state backend, on local state by necessity
 terraform/
 ├── docs/            architecture, networking and deployment documentation
 ├── environments/    one root module per environment (dev, qa, stage, prod)
-└── modules/         21 reusable modules
+└── modules/         22 reusable modules
 Makefile             every check CI runs, plus plan/apply per environment
 ```
 
@@ -22,12 +78,16 @@ make check              # fmt-check, validate, test, lint
 make plan ENV=dev       # needs credentials
 ```
 
+**167 tests** run with `mock_provider` — no credentials, nothing created. They
+test the preconditions, not the provider: a test asserting that
+`azurerm_storage_account` sets a name is testing HashiCorp's code.
+
 | Document | Contents |
 |---|---|
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Conventions that are load-bearing rather than stylistic, and the failures behind them |
-| [`SECURITY.md`](SECURITY.md) | Reporting, security posture, and the weaknesses deliberately accepted |
-| [`bootstrap/README.md`](bootstrap/README.md) | Why the backend runs on local state, and how to adopt the existing one by import |
-| [`terraform/docs/ARCHITECTURE.md`](terraform/docs/ARCHITECTURE.md) | Design decisions and rejected alternatives, traffic flow, Zero Trust control mapping, cost analysis |
+| [`SECURITY.md`](SECURITY.md) | Security posture, and the weaknesses deliberately accepted |
+| [`bootstrap/README.md`](bootstrap/README.md) | Why the backend runs on local state, and how it was adopted by import |
+| [`terraform/docs/ARCHITECTURE.md`](terraform/docs/ARCHITECTURE.md) | Design decisions and rejected alternatives, as-designed and as-built diagrams, Zero Trust mapping, cost |
 | [`terraform/docs/NETWORKING.md`](terraform/docs/NETWORKING.md) | CIDR allocation, subnet plan, NSG rule matrix, routing, private DNS, CAF naming |
 | [`terraform/docs/DEPLOYMENT.md`](terraform/docs/DEPLOYMENT.md) | Module dependency graph, deployment phases, gates, rollback characteristics |
 
@@ -41,29 +101,28 @@ make plan ENV=dev       # needs credentials
 | Terraform | `>= 1.9` |
 | Naming | Azure CAF abbreviations via the `naming` module — no literal resource names in calling code |
 | Tagging | Mandatory governance tags enforced by validation |
+| Iteration | `for_each` over maps, never `count` on named resources; keys statically known |
 | Secrets | None in code or state — managed identity and Entra ID authentication throughout |
-| State | Remote `azurerm` backend, one state file per environment |
+| State | Remote `azurerm` backend, one state file per environment, Entra auth, shared keys disabled |
 | Frameworks | Azure Well-Architected Framework, Azure CAF, HashiCorp Style Guide |
+
+Environment names appear in exactly **three** modules — `naming`, `tags` and
+`profile`. Every other module takes capability flags, which is why adding `qa`
+and `stage` touched three modules rather than twenty.
 
 ---
 
-## Retired: the original `cloudcart` configuration
+## The subscription shaped the design
 
-The repository root previously held an earlier deployment — a Linux VM and an
-AKS cluster on `azurerm ~> 3.117`, with its own state backend.
+This ran on an Azure FreeTrial subscription with the spending limit on. Three
+constraints changed real decisions rather than being worked around:
 
-It has been removed. It was never successfully applied: the `cloudcart`
-resource group contained only its own state storage account, with no VNet, VM
-or cluster, so there was nothing to migrate. The new tree under `terraform/`
-supersedes it on `azurerm ~> 4.0`.
+| Constraint | Consequence |
+|---|---|
+| Azure SQL provisioning **blocked in East US** | The whole platform moved to Central US, after probing seven regions with throwaway servers. ARCHITECTURE.md §6a |
+| **4 total regional vCPUs**, not raisable on FreeTrial | dev's cluster is a single node and explicitly not HA. Three nodes across three zones is 6 vCPU. It also blocks `qa`, `stage` and `prod` outright |
+| Azure Firewall is ~$913/month | `dev` and `qa` egress through a NAT Gateway (~$35) with **no filtering at all**, which is stated rather than glossed. ARCHITECTURE.md §6c |
 
-The old code remains in git history if it is ever needed:
-
-```bash
-git log --oneline --all -- modules/ main.tf
-git show <commit>:main.tf
-```
-
-**AKS is not currently part of the new platform.** The three-tier design uses
-VM Scale Sets. If a container platform is wanted, it belongs as its own module
-with its own subnet — the address plan reserves `10.x.16.0/20` for exactly that.
+The interesting part is not that the constraints existed. It is that verifying
+a service can be provisioned *for this subscription in this region* before
+building on it turned a 28-resource rebuild into a one-line change.

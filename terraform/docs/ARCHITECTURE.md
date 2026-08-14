@@ -1,9 +1,15 @@
 # Architecture — cloudcart 3-Tier Platform
 
-Status: **dev deployed**. This document is the design record — it keeps the
-decisions and the rejected alternatives, including ones later overtaken by
-events (§6a, §6b). For what is currently built and applied, see
-[`../README.md`](../README.md).
+Status: **nothing deployed.** `dev` was built, verified and decommissioned on
+2026-08-14; `qa`, `stage` and `prod` have never been applied.
+
+This document is the **design record**. It keeps decisions and rejected
+alternatives, including ones later overtaken by events — so parts of it
+describe a platform that was never built, and those parts are marked rather
+than rewritten. §3a is the design; §3b is what actually ran. §6a, §6b and §6c
+record what changed and why.
+
+For current state, see [`../README.md`](../README.md).
 
 ---
 
@@ -187,6 +193,15 @@ the system route and does not create asymmetric routing through the firewall.
 
 ## 3. Architecture diagram
 
+Two diagrams, because they differ and the difference is the honest part. The
+first is the design; the second is what `dev` actually ran before it was
+decommissioned on 2026-08-14.
+
+### 3a. As designed
+
+> Azure Firewall, the VM Scale Set tiers and the internal load balancer in this
+> diagram were **never built**. See §6b and §6c.
+
 ```mermaid
 flowchart TB
     Users(["Users / Internet"])
@@ -272,6 +287,98 @@ flowchart TB
     RSV -.backup.-> APP
     RSV -.backup.-> BIZ
 ```
+
+
+### 3b. As built — `dev`, before decommissioning
+
+What 149 resources actually looked like. Every difference from §3a is a cost or
+quota decision recorded in §6a-§6c, not a design change.
+
+```mermaid
+flowchart TB
+    Users(["Users / Internet"])
+    Ops(["Operator laptop"])
+
+    subgraph SUB["Azure subscription — dev, Central US"]
+
+        subgraph RGNET["rg-cloudcart-dev-cus-net"]
+            direction TB
+            subgraph VNET["VNet 10.10.0.0/16"]
+                direction TB
+
+                subgraph EDGE["Edge"]
+                    BAS["Azure Bastion — Developer SKU<br/>attaches by VNet ID, no subnet, free"]
+                    NAT["NAT Gateway + public IP<br/>~$35/mo — the ONLY egress path"]
+                end
+
+                subgraph AKSNET["snet-aks-dev-cus 10.10.16.0/20"]
+                    AKS["AKS — 1 node, Standard_D2s_v4<br/>PUBLIC API server, IP-allowlisted<br/>Free SKU tier, NO control-plane SLA<br/>Azure CNI Overlay + network policy"]
+                end
+
+                subgraph PEP["snet-pep-dev-cus 10.10.13.0/24"]
+                    PESQL["PE: SQL"]
+                    PERDS["PE: Redis :10000"]
+                    PEKV["PE: Key Vault"]
+                    PEST["PE: Storage"]
+                end
+
+                RESV["Reserved, never allocated:<br/>AzureFirewallSubnet, snet-agw,<br/>snet-app, snet-biz, snet-db, snet-mgmt"]
+            end
+            PDNS["Private DNS zones<br/>4 zones, linked to the VNet"]
+        end
+
+        subgraph RGDATA["rg-cloudcart-dev-cus-data"]
+            SQL["Azure SQL — GP_S_Gen5_1 serverless<br/>Entra-only auth, NO SQL login exists"]
+            RDS["Azure Managed Redis — Balanced_B0<br/>single node, NO SLA, keys disabled"]
+            ST["Storage — LRS, shared keys DISABLED"]
+        end
+
+        subgraph RGSEC["rg-cloudcart-dev-cus-sec"]
+            KV["Key Vault — RBAC, purge protection OFF"]
+            MI["User-assigned identities, one per tier"]
+        end
+
+        subgraph RGMON["rg-cloudcart-dev-cus-mon"]
+            LAW["Log Analytics — CAPPED at 0.5 GB/day"]
+            MON["8 metric alerts + 2 log alerts<br/>both cap alerts FIRED on a real breach"]
+            RSV["Recovery Services vault<br/>protects NOTHING by design"]
+        end
+    end
+
+    Users -.->|"no WAF, no App Gateway<br/>AKS provisions its own LB"| AKS
+    Ops -->|"kubectl, via Azure RBAC<br/>Cluster Admin at cluster scope"| AKS
+    Ops --> BAS
+    AKS --> PESQL
+    AKS --> PERDS
+    AKS --> PEKV
+    AKS --> PEST
+    PESQL --> SQL
+    PERDS --> RDS
+    PEKV --> KV
+    PEST --> ST
+    PDNS -.resolves.-> PEP
+    AKS -->|"UNFILTERED egress<br/>no inspection, any destination"| NAT
+    NAT --> Users
+    MI -.workload identity.-> KV
+    MI -.workload identity.-> ST
+    AKS -.diagnostics.-> LAW
+    SQL -.diagnostics.-> LAW
+    KV -.diagnostics.-> LAW
+    LAW --> MON
+```
+
+**The four differences that matter, and why:**
+
+| Designed | Built | Reason |
+|---|---|---|
+| Azure Firewall, all egress inspected | **NAT Gateway, nothing inspected** | ~$913/mo vs ~$35 against a $200 credit (§6c) |
+| App Gateway WAF v2 fronting the app tier | **No ingress at all** | ~$260/mo, and dev ran no workload to front |
+| Two VM Scale Sets in separate subnets, NSG between them | **One AKS cluster, tiers as namespaces** | The tier boundary moved from the network into the cluster (§6b) |
+| 3 nodes across 3 zones | **1 node, 0 zones** | 3 nodes is 6 vCPU; the quota is 4 (§6b) |
+
+And one that is not visible in any diagram: the single node ran at **96% of
+allocatable CPU from addons alone**, with two addon pods `Pending` since build.
+dev could run the platform; it could not have run a workload on it.
 
 ---
 

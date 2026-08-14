@@ -30,7 +30,8 @@ Out of scope:
 
 - Azure platform vulnerabilities. Report those to
   [MSRC](https://msrc.microsoft.com/report).
-- The deployed dev environment. It is a personal sandbox with no data.
+- Any deployed environment. None is currently running; `dev` was a personal
+  sandbox with no data and was decommissioned on 2026-08-14.
 - Cost. An expensive default is a bug, not a vulnerability.
 
 ---
