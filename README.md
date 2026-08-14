@@ -26,6 +26,99 @@ and differentiated by variables rather than by code.
 
 ---
 
+## The platform
+
+What `dev` actually ran — 149 resources, before it was decommissioned. The
+[design](docs/ARCHITECTURE.md) had an Azure Firewall inspecting all egress, an
+Application Gateway fronting the app tier, and two VM Scale Sets in separate
+subnets. None of those were built, and §6a–§6c record why: quota and cost,
+decided deliberately rather than drifted into.
+
+```mermaid
+flowchart TB
+    Users(["Users / Internet"])
+    Ops(["Operator laptop"])
+
+    subgraph SUB["Azure subscription — dev, Central US"]
+
+        subgraph RGNET["rg-cloudcart-dev-cus-net"]
+            direction TB
+            subgraph VNET["VNet 10.10.0.0/16"]
+                direction TB
+
+                subgraph EDGE["Edge"]
+                    BAS["Azure Bastion — Developer SKU<br/>attaches by VNet ID, no subnet, free"]
+                    NAT["NAT Gateway + public IP<br/>~$35/mo — the ONLY egress path"]
+                end
+
+                subgraph AKSNET["snet-aks-dev-cus 10.10.16.0/20"]
+                    AKS["AKS — 1 node, Standard_D2s_v4<br/>PUBLIC API server, IP-allowlisted<br/>Free SKU tier, NO control-plane SLA<br/>Azure CNI Overlay + network policy"]
+                end
+
+                subgraph PEP["snet-pep-dev-cus 10.10.13.0/24"]
+                    PESQL["PE: SQL"]
+                    PERDS["PE: Redis :10000"]
+                    PEKV["PE: Key Vault"]
+                    PEST["PE: Storage"]
+                end
+
+                RESV["Reserved, never allocated:<br/>AzureFirewallSubnet, snet-agw,<br/>snet-app, snet-biz, snet-db, snet-mgmt"]
+            end
+            PDNS["Private DNS zones<br/>4 zones, linked to the VNet"]
+        end
+
+        subgraph RGDATA["rg-cloudcart-dev-cus-data"]
+            SQL["Azure SQL — GP_S_Gen5_1 serverless<br/>Entra-only auth, NO SQL login exists"]
+            RDS["Azure Managed Redis — Balanced_B0<br/>single node, NO SLA, keys disabled"]
+            ST["Storage — LRS, shared keys DISABLED"]
+        end
+
+        subgraph RGSEC["rg-cloudcart-dev-cus-sec"]
+            KV["Key Vault — RBAC, purge protection OFF"]
+            MI["User-assigned identities, one per tier"]
+        end
+
+        subgraph RGMON["rg-cloudcart-dev-cus-mon"]
+            LAW["Log Analytics — CAPPED at 0.5 GB/day"]
+            MON["8 metric alerts + 2 log alerts<br/>both cap alerts FIRED on a real breach"]
+            RSV["Recovery Services vault<br/>protects NOTHING by design"]
+        end
+    end
+
+    Users -.->|"no WAF, no App Gateway<br/>AKS provisions its own LB"| AKS
+    Ops -->|"kubectl, via Azure RBAC<br/>Cluster Admin at cluster scope"| AKS
+    Ops --> BAS
+    AKS --> PESQL
+    AKS --> PERDS
+    AKS --> PEKV
+    AKS --> PEST
+    PESQL --> SQL
+    PERDS --> RDS
+    PEKV --> KV
+    PEST --> ST
+    PDNS -.resolves.-> PEP
+    AKS -->|"UNFILTERED egress<br/>no inspection, any destination"| NAT
+    NAT --> Users
+    MI -.workload identity.-> KV
+    MI -.workload identity.-> ST
+    AKS -.diagnostics.-> LAW
+    SQL -.diagnostics.-> LAW
+    KV -.diagnostics.-> LAW
+    LAW --> MON
+```
+
+| Designed | Built | Why |
+|---|---|---|
+| Azure Firewall, all egress inspected | **NAT Gateway, nothing inspected** | ~$913/mo vs ~$35 |
+| App Gateway WAF v2 | **No ingress at all** | ~$260/mo, and dev ran no workload |
+| Two VM Scale Sets, NSG between them | **One AKS cluster, tiers as namespaces** | The tier boundary moved from the network into the cluster |
+| 3 nodes across 3 zones | **1 node, 0 zones** | 3 nodes is 6 vCPU; the quota is 4 |
+
+Both diagrams — as designed and as built — are in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3.
+
+---
+
 ## What is actually interesting here
 
 Not the resource count. This platform is built around a single idea:

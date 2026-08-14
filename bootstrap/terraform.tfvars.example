@@ -1,0 +1,10 @@
+# The state account name is deliberately NOT committed: a storage account name
+# is a public DNS label, so publishing it in a public repository advertises the
+# exact endpoint holding every environment's Terraform state.
+#
+# Access remains RBAC-gated and shared keys are disabled, so the name alone
+# grants nothing — it is an unnecessary disclosure, not a breach.
+storage_account_name = "<globally-unique-state-account-name>"
+
+# Supplied at the command line in the import commands, or set it here.
+# subscription_id = "<subscription-guid>"

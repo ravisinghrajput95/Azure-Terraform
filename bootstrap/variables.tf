@@ -28,9 +28,29 @@ variable "location" {
 }
 
 variable "storage_account_name" {
-  description = "Globally unique state account name. Not derived from the naming module: that module is part of the codebase this account stores the state for, and the bootstrap must not depend on it."
+  description = <<-EOT
+    Globally unique state account name.
+
+    NO DEFAULT, deliberately. A storage account name is a public DNS label —
+    `<name>.blob.core.windows.net` resolves for anyone — so committing one to a
+    public repository publishes the exact endpoint holding every environment's
+    Terraform state. Access is still RBAC-gated and shared keys are disabled,
+    so the name alone grants nothing; it is an unnecessary disclosure and a
+    free target, not a breach.
+
+    Supply it in `terraform.tfvars`, which is gitignored. See
+    `terraform.tfvars.example`.
+
+    Not derived from the naming module either: that module is part of the
+    codebase this account stores the state for, and the bootstrap must not
+    depend on it.
+  EOT
   type        = string
-  default     = "REDACTED-STATE-ACCOUNT"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]{3,24}$", var.storage_account_name))
+    error_message = "Storage account names are 3-24 characters, lowercase letters and digits only. Azure rejects anything else with an error that does not name the rule."
+  }
 }
 
 variable "environments" {
