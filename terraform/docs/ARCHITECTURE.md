@@ -136,6 +136,10 @@ so a non-zonal region degrades to `[]` explicitly instead of failing at apply.
 
 ## 2. Traffic flow
 
+> **As designed, not as deployed.** The Azure Firewall in this section and in
+> the §3 diagram was never built — egress is a NAT Gateway with no filtering.
+> See §6c.
+
 ```
 Users ──► Public IP (zone-redundant)
           └─► Application Gateway WAF v2  [snet-agw, zones 1-3]
@@ -267,8 +271,8 @@ flowchart TB
 | Identity, not secrets | User-assigned managed identity per tier; Entra-only SQL auth; Key Vault RBAC (not access policies) |
 | Least privilege | Per-tier identities with scoped role assignments — app tier cannot read biz tier's secrets |
 | Encryption in transit | TLS 1.2 minimum on storage/SQL/Redis; WAF terminates TLS with a Key Vault certificate |
-| Egress control | All workload subnets default-route to Azure Firewall; explicit FQDN/network rules |
-| Perimeter inspection | WAF v2 in Prevention mode with OWASP managed rule set |
+| Egress control | *Designed:* all workload subnets default-route to Azure Firewall with explicit FQDN/network rules. **Not deployed — NAT Gateway, unfiltered. See §6c.** |
+| Perimeter inspection | *Designed:* WAF v2 in Prevention mode with OWASP managed rule set. **Not deployed — `application-gateway` is written but not instantiated.** |
 | Auditability | Diagnostic settings on every resource → Log Analytics; activity logs exported |
 | Key management | Key Vault with soft-delete + purge protection enabled (irreversible once on — deliberate) |
 | Defender-ready | Resources emit the categories Defender for Cloud plans consume; enabling the plans is a subscription-level decision left as a variable |
@@ -319,7 +323,7 @@ the network, then data, then compute, then observability wiring.
 | 6 | `networking` | 3 | VNet + subnets; the address space everything binds to. |
 | 7 | `nsg` | 6 | Attaches to subnets. |
 | 8 | `route-table` | 6 | Needs subnets; firewall IP injected later as a variable. |
-| 9 | `firewall` | 6, 8 | Provides the next-hop the route tables point at. |
+| 9 | ~~`firewall`~~ | 6, 8 | **Never written.** ~$900/month against a $200 credit. Egress is a NAT Gateway from `networking`. See §6c. |
 | 10 | `private-dns` | 6 | Zones + VNet links, required before any private endpoint resolves. |
 | 11 | `managed-identity` | 3 | Identities must exist before RBAC on vault/storage. |
 | 12 | `key-vault` | 6, 10, 11 | Private endpoint + RBAC assignments. |
@@ -475,6 +479,33 @@ posture in plain language so a development cluster never reads as
 production-shaped, and three production guardrails in the `profile` module
 reject a prod environment that is not HA, not private, or on the Free SKU tier.
 
+The same quota has a second consequence, measured rather than predicted. On
+2026-08-14 the single node was at **96% of allocatable CPU from addons alone**,
+with two addon pods `Pending` on `Insufficient cpu` since build. Gatekeeper,
+`ama-logs`, secrets-store CSI, workload identity, CNS and NPM do not fit
+alongside an application on 2 vCPU. dev can therefore run the platform but
+cannot run a workload on it — and it reports `Succeeded`/`Running` while that is
+true. Recorded in the `aks` README.
+
+**Cluster access is now proven, and the trap that hid it is worth keeping.**
+`entra_admin_group_object_ids` is bound by AKS as a Kubernetes *group* subject.
+A user object ID placed there is a valid GUID, so Azure accepts it, provisions
+the cluster, and displays an admin — while matching nobody, because a user's
+object ID never appears in their own token's `groups` claim. With
+`local_account_disabled = true` that left a cluster nobody could enter, and the
+field cannot even be cleared afterwards (`resetAADProfile is not allowed`), only
+replaced.
+
+Access was restored through Azure RBAC instead: an **Azure Kubernetes Service
+RBAC Cluster Admin** assignment at cluster scope. Owner and Contributor do not
+substitute — they carry `dataActions: []`, granting control-plane rights and no
+`kubectl` access at all. Verified against the live API on 2026-08-14 with real
+reads and a namespace create/delete, not from a plan. The inert user object ID
+remains in the field and is left there deliberately: it grants nothing, and the
+available replacement that *would* match — the Global Administrator directory
+role, which does appear in the `groups` claim — would reintroduce a broad admin
+path around the scoped role assignment.
+
 **Module inventory changed.** `vm` was never built; `aks` replaces it.
 `autoscale` is obsolete as designed — it was VM Scale Set autoscale rules,
 where AKS uses the cluster autoscaler configured on the node pool itself, so
@@ -482,6 +513,38 @@ that behaviour now lives inside the `aks` module. The two load balancers were
 deployed and then destroyed: AKS provisions and manages its own for a
 `Service` of type `LoadBalancer`, so keeping them was roughly $40/month for
 nothing. The `load-balancer` module remains in the repository, unused.
+
+---
+
+## 6c. There is no firewall. Egress is a NAT Gateway.
+
+§1.1, §2, §4 and the §3 diagram all describe egress forced through Azure
+Firewall by a `0.0.0.0/0` UDR. **That design was never built.** The `firewall`
+module directory contains only a `.gitkeep`.
+
+The reason is §1.7's own arithmetic, applied honestly: Azure Firewall Standard
+is ~$900/month before data processing, against a $200 credit with the spending
+limit on. It is by an order of magnitude the most expensive line in the design,
+and it guards a single-node development cluster.
+
+What is deployed instead:
+
+| Designed | Deployed |
+|---|---|
+| Azure Firewall + `0.0.0.0/0` UDR per workload subnet | **NAT Gateway** in `networking`, ~$35/month |
+| Egress FQDN/network rules, inspected | Egress unfiltered — NAT Gateway does not inspect |
+| Firewall private IP as route next-hop | No UDR next-hop; the `route-table` module is deployed but points nowhere near a firewall |
+
+**What this costs in security posture, stated plainly:** there is no egress
+filtering and no egress inspection. A compromised pod can reach any internet
+address. §4's "Egress control" and "Perimeter inspection" rows are aspirational
+for dev, not implemented. The NAT Gateway supplies a stable, known egress
+address — which is what the `aks` module's `node_egress_ip_ranges` precondition
+depends on — and nothing more.
+
+This is the correct trade for a credit-limited dev environment and the wrong one
+for prod. It is recorded here rather than quietly omitted because a reader of §2
+would otherwise reasonably believe traffic is inspected.
 
 ---
 

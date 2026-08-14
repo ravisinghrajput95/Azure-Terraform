@@ -5,8 +5,9 @@ Three-tier application topology on AKS, with all data services reachable only
 through private endpoints, controlled egress, and no public IP on any compute
 resource.
 
-> **Status: dev deployed.** 21 modules built, of which 20 are applied and
-> verified in Azure. Compute is AKS — see
+> **Status: dev deployed.** 21 modules built. 19 are instantiated by dev's root
+> module; `application-gateway` and `load-balancer` are written but not deployed
+> — AKS provisions its own load balancer. Compute is AKS — see
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6b for what moving the tier
 > boundary from subnets into a cluster changes, and why dev's cluster is
 > deliberately not highly available.
@@ -38,12 +39,12 @@ terraform/
 └── modules/
     ├── naming                   CAF naming — pure computation, no resources
     ├── tags                     Mandatory tag map with validation
+    ├── profile                  Per-environment capability flags and sizing
     ├── resource-group           Lifecycle-scoped resource groups
     ├── networking               VNet and subnets
     ├── nsg                      Network security groups and associations
     ├── route-table              UDRs and subnet associations
     ├── private-dns              Private DNS zones and VNet links
-    ├── firewall                 Azure Firewall, policy, rule collections
     ├── bastion                  Azure Bastion
     ├── log-analytics            Log Analytics workspace
     ├── diagnostics              Shared diagnostic-settings helper
@@ -58,6 +59,14 @@ terraform/
     ├── monitor                  Alerts and action groups
     └── recovery-services        Recovery Services vault and backup policies
 ```
+
+`firewall`, `vm` and `autoscale` are **empty placeholder directories**, not
+modules. `vm` and `autoscale` were superseded by AKS (ARCHITECTURE.md §6b).
+`firewall` was never written: Azure Firewall is ~$900/month against a $200
+credit, so **egress is a NAT Gateway created by the `networking` module**
+(~$35/month) and the cluster runs `outbound_type = "userAssignedNATGateway"`.
+ARCHITECTURE.md still describes the firewall-based egress design throughout —
+that is the design record, not what is deployed.
 
 Each environment root module is a thin composition layer: it wires modules
 together and supplies variables. It contains no resource blocks of its own.

@@ -210,6 +210,79 @@ Kubernetes API server would be reachable from the entire internet;
 authentication still applies, but so does every authentication bypass ever
 found in an API server.
 
+### `entra_admin_group_object_ids` takes GROUPS. A user object ID is accepted and never matches.
+
+The name says group and Azure means it. AKS binds each entry as a Kubernetes
+**group** subject, matched against the `groups` claim of the caller's token. A
+*user* object ID is a well-formed GUID, so Azure accepts it, the cluster
+provisions, the portal shows an admin configured — and the binding matches
+nobody, because a user's own object ID never appears in their own `groups`
+claim.
+
+Combined with `local_account_disabled = true`, that is a cluster with no way
+in. It is not recoverable by fixing the variable either: Azure rejects clearing
+the field outright.
+
+```
+Operation resetAADProfile is not allowed for AKS cluster with Azure AD integration
+```
+
+The field can only be **replaced** with a real group, never emptied.
+
+Make the trap visible with the token itself — this is the check worth running,
+because it shows what the API server actually sees:
+
+```console
+$ kubectl auth whoami
+ATTRIBUTE    VALUE
+Username     dbe58829-...          # the user
+Groups       [f544f25d-... system:authenticated]
+```
+
+The object ID configured as an "admin group" is the one in `Username`. It is
+absent from `Groups`. That is the whole failure, in four lines.
+
+### The access path that works is Azure RBAC, not the admin group
+
+`aad_rbac_enabled = true` routes authorization through Azure RBAC, where access
+comes from a **role assignment**, not from group membership:
+
+```bash
+az role assignment create \
+  --assignee <user-or-group-object-id> \
+  --role "Azure Kubernetes Service RBAC Cluster Admin" \
+  --scope <cluster-resource-id>
+```
+
+Owner and Contributor do **not** grant this. They carry `dataActions: []`, so
+they permit managing the cluster resource and confer no `kubectl` access
+whatsoever. This surprises people who have full control of the subscription and
+still get `Forbidden` — the control plane and the data plane are separate
+permission systems.
+
+**Verified end to end against dev on 2026-08-14**, not inferred from a plan:
+`kubectl get nodes` and `get pods -A` return live data, and a namespace was
+created, read back and deleted. `can-i` confirms `get secrets` cluster-wide,
+`create deployments`, `delete namespaces` and `create clusterrolebindings`.
+
+Two notes for whoever runs this next:
+
+- `kubectl auth can-i --list` is **not** a valid way to check access here. Azure
+  RBAC is a webhook authorizer and cannot enumerate its own rules, so the list
+  comes back looking almost empty even for a full cluster admin. It emits
+  `webhook authorizer does not support user rule resolution` and people read the
+  short list as a denial. Test a concrete verb instead.
+- `kubelogin convert-kubeconfig -l azurecli` reuses an existing `az` session, so
+  no interactive device-code login is needed on a machine that is already
+  signed in.
+
+Because the working grant is a role assignment, the inert user object ID still
+sitting in `entra_admin_group_object_ids` grants nothing to anyone and is
+harmless. Replacing it with a directory role that *does* appear in the `groups`
+claim — Global Administrator resolves as one — would restore a second,
+much broader admin path that bypasses the scoped, auditable role assignment.
+Leave it inert.
+
 ---
 
 ## Two identities, routinely confused
@@ -239,6 +312,30 @@ development cluster never reads as production-shaped:
 NOT highly available: 1 node(s) across 0 zone(s), Free SKU tier which
 carries NO control-plane SLA. A node or zone fault takes the cluster with it.
 ```
+
+### The addons fill the node before any workload exists
+
+Measured on dev, 2026-08-14, on its single `Standard_D2s_v4`:
+
+```
+cpu requests: 1826m (96% of allocatable)     memory: 3200Mi (48%)
+```
+
+Two addon pods have been `Pending` since the cluster was built, both
+`Insufficient cpu`: the second `azure-wi-webhook-controller-manager` replica and
+`eraser-controller-manager`. Nothing is wrong with them — there is no room.
+
+The addons enabled here are not free in the way "managed addon" suggests.
+Gatekeeper/Azure Policy, `ama-logs`, the secrets-store CSI driver, workload
+identity, CNS and NPM together reserve almost the whole node. **A workload
+deployed to dev today will sit `Pending` forever**, and the cluster will report
+`Succeeded` and `Running` throughout.
+
+This is a consequence of the 4 vCPU quota, not a defect: a 2 vCPU node cannot
+host this addon set plus an application. It is recorded because the failure
+presents as "my deployment does nothing" with a healthy-looking cluster. The
+fix is capacity — a second node pool, a larger SKU, or dropping addons — all of
+which need quota this subscription does not have.
 
 ---
 
