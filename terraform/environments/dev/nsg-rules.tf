@@ -149,8 +149,20 @@ locals {
           access            = "Allow"
           protocol          = "Tcp"
           source_port_range = "*"
-          # 1433 SQL, 6380 Redis TLS, 443 Key Vault and Storage.
-          destination_port_ranges = ["443", "1433", "6380"]
+          # 1433 SQL, 10000 Managed Redis, 443 Key Vault and Storage.
+          #
+          # 10000, NOT 6380. Azure Cache for Redis listens on 6380 for TLS;
+          # Azure MANAGED Redis — which this platform uses, because Cache for
+          # Redis is retiring and its API rejects creation — listens on 10000.
+          # This rule named 6380 until 2026-08-14, which meant every call from a
+          # pod to Redis fell through to the deny below.
+          #
+          # Nothing surfaced it. The private endpoint exists, the private DNS
+          # zone resolves, the NSG reads as configured, and the connection is
+          # simply refused. dev has never run a workload, so nothing exercised
+          # the path. Confirmed against the live database:
+          #   az redisenterprise database list ... --query "[].port"  ->  10000
+          destination_port_ranges = ["443", "1433", "10000"]
           # The AKS node subnet, NOT the app and biz subnets. Under Azure CNI
           # Overlay a pod's traffic leaving the cluster is SNATed to its NODE
           # address, so a rule naming the old tier subnets would match nothing
