@@ -25,12 +25,15 @@ committed.
 
 ---
 
-## The resources already exist
+## Adopted — imported and applied on 2026-08-14
 
-This configuration was written **after** the backend was created by hand. It
-describes what is already deployed, so adopt it with `import` rather than
-`apply` — an apply against an empty state would fail on the storage account
-name already being taken.
+This configuration was written **after** the backend was created by hand, so it
+was adopted with `import` rather than `apply` — an apply against an empty state
+would have failed on the storage account name already being taken.
+
+It is no longer aspirational: the backend is now under Terraform management and
+`terraform plan` is clean. The commands below are kept as the recovery path,
+since the local state file is gitignored and losing it means doing this again.
 
 ```bash
 cd bootstrap
@@ -46,7 +49,8 @@ terraform import -var="subscription_id=$SUB" \
   azurerm_storage_account.tfstate \
   "/subscriptions/$SUB/resourceGroups/REDACTED-STATE-RG/providers/Microsoft.Storage/storageAccounts/REDACTED-STATE-ACCOUNT"
 
-for env in dev qa stage prod; do
+# qa and stage did not exist and were CREATED by the apply, not imported.
+for env in dev prod; do
   terraform import -var="subscription_id=$SUB" \
     "azurerm_storage_container.tfstate[\"$env\"]" \
     "https://REDACTED-STATE-ACCOUNT.blob.core.windows.net/tfstate-$env"
@@ -55,13 +59,56 @@ done
 terraform plan -var="subscription_id=$SUB"
 ```
 
-The defaults are set to match the account's **current live state**, so the plan
-after import should be close to empty. Where it is not, that is a real
-discrepancy — see below.
+The container import ID is the **data-plane URL**, not an ARM resource ID, even
+though the resource is configured with `storage_account_id`. Verified working.
 
-Containers `tfstate-qa` and `tfstate-stage` do not exist yet; their imports
-will fail until an apply creates them. `tfstate-test` exists and is an empty
-leftover from before the environment rename.
+### `storage_use_azuread = true` is required, and the error does not say so
+
+The storage account import fails without it:
+
+```
+Error: retrieving queue properties for Storage Account (...): 403
+Key based authentication is not permitted on this storage account.
+```
+
+This is a direct consequence of `shared_access_key_enabled = false`. Reading a
+storage account touches the **data plane** — the provider fetches queue and
+share properties during an ordinary refresh — and it does so with a shared key
+unless the provider is told otherwise. With keys disabled the account becomes
+unreadable, and `import`, `plan` and `refresh` all fail the same way.
+
+The message names the *queue* endpoint, which is doubly misleading: nothing in
+this configuration uses queues, and the cause is authentication rather than
+queues. `storage_use_azuread = true` in the provider block switches the data
+plane to Entra ID. The caller then needs a **data-plane role** — Storage Blob
+Data Contributor or Owner — because control-plane Owner alone does not grant it.
+
+The environment root modules have set this flag all along; `dev`'s own storage
+account has had shared keys disabled since it was built. Only `bootstrap` was
+missing it, for the same reason it had no state: **it had never been run.** This
+is the concrete cost of configuration that exists but has never executed, and
+it surfaced the moment the state account stopped accepting keys.
+
+### What the first apply changed
+
+`2 to add, 4 to change, 0 to destroy`:
+
+| Resource | Change |
+|---|---|
+| Resource group | `managedBy: Manual` → `Terraform` — now true |
+| Storage account | no tags → the three standard tags |
+| Containers `dev`, `prod` | `storage_account_name` → `storage_account_id` |
+| Containers `qa`, `stage` | **created** — they did not exist |
+
+The container change is the provider moving off `storage_account_name`, one of
+the deprecated arguments this repository tracks. It is an in-place **update**;
+had it been ForceNew it would have destroyed the container holding dev's live
+state. Worth confirming on the plan rather than assuming, which is why the
+counts are recorded here.
+
+`tfstate-test` still exists, is empty, and is a leftover from before the `test`
+→ `qa` rename. It is deliberately **not** in `var.environments`, so Terraform
+does not manage it and will not delete it. Removing it is a manual decision.
 
 ---
 
@@ -108,13 +155,15 @@ Deleting the *container* takes every blob inside it regardless of the blob
 policy, so enabling only the blob one leaves the larger hole open. The
 configuration sets both from this single variable.
 
-### Applying this configuration will not re-do the work
+### Both settings survived adoption unchanged
 
-Both changes were made with `az` against the live account, because `bootstrap`
-has still never been applied or imported (see above). The defaults here were
-updated to match, so an eventual import and apply should show **no diff** on
-these two settings. If it shows one, the live account has drifted, not this
-file.
+Both changes were originally made with `az` against the live account, before
+this configuration was imported. The defaults here were set to match, and the
+import on 2026-08-14 **confirmed it**: the first plan showed no diff on either
+setting, which is the evidence that code and reality agree rather than an
+assertion that they do.
+
+A future diff on either means the live account has drifted, not this file.
 
 `state_protection_summary` reports both states in plain language rather than
 leaving them to be inferred from the configuration.
