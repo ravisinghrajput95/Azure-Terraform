@@ -198,10 +198,132 @@ Two diagrams, because they differ and the difference is the honest part. The
 first is the design; the second is what `dev` actually ran before it was
 decommissioned on 2026-08-14.
 
-### 3a. As designed
+### 3a. Canonical — all four environments
 
-> Azure Firewall, the VM Scale Set tiers and the internal load balancer in this
-> diagram were **never built**. See §6b and §6c.
+One shape, differentiated by variables. Component labels carry the
+environments they apply to; §3b is the table of what differs.
+
+**Only `dev` has ever been applied**, and it was decommissioned on
+2026-08-14. Everything else is configuration that plans.
+
+```mermaid
+flowchart TB
+    Users(["Users / Internet"])
+    Ops(["Operator"])
+
+    subgraph SUB["Azure subscription — one per environment"]
+
+        subgraph RGNET["rg-cloudcart-ENV-cus-net"]
+            direction TB
+
+            subgraph VNET["VNet 10.x.0.0/16 — dev .10 / qa .20 / prod .30 / stage .40"]
+                direction TB
+
+                AGW["Application Gateway WAF v2<br/>snet-agw /24<br/>qa Detection · stage + prod Prevention<br/>NOT in dev"]
+
+                subgraph AKSNET["snet-aks /20"]
+                    AKS["AKS — Azure CNI Overlay + network policy<br/>dev 1 node Free SKU, PUBLIC API + IP allowlist<br/>qa 2 · stage 3 · prod 3 nodes, Standard SKU, PRIVATE API<br/>user node pool in qa, stage, prod"]
+                end
+
+                TIERS["snet-app /22 · snet-biz /22<br/>snet-db /24 · snet-mgmt /24<br/>allocated, NSG'd, EMPTY —<br/>the VMSS tiers AKS replaced"]
+
+                subgraph PEP["snet-pep /24 — private endpoints"]
+                    PE["PE: SQL · Redis :10000<br/>Key Vault · Storage"]
+                end
+
+                BASSN["AzureBastionSubnet /26<br/>used by Basic and Standard;<br/>empty in dev, where Developer<br/>attaches by VNet ID"]
+            end
+
+            EGRESS{"EGRESS — one path, chosen per environment"}
+            NATGW["NAT Gateway ~$35/mo<br/>dev + qa<br/>outbound_type = userAssignedNATGateway<br/>NO inspection, any destination"]
+            AFW["Azure Firewall<br/>stage Standard ~$913/mo · prod Premium ~$1,278 + IDPS<br/>outbound_type = userDefinedRouting<br/>0.0.0.0/0 -> firewall private IP"]
+
+            BAS["Azure Bastion<br/>dev Developer · qa Basic · stage + prod Standard"]
+            PDNS["Private DNS zones — 4, linked to the VNet"]
+        end
+
+        subgraph RGDATA["rg-cloudcart-ENV-cus-data"]
+            SQL["Azure SQL — Entra-only auth, no SQL login exists<br/>dev GP_S_Gen5_1 serverless · qa GP_Gen5_2<br/>stage BC_Gen5_2 · prod BC_Gen5_4, zone redundant"]
+            RDS["Azure Managed Redis — access keys disabled<br/>dev B0 single node NO SLA<br/>qa + stage B1 HA · prod B3 HA"]
+            ST["Storage — shared keys disabled<br/>dev + qa LRS · stage + prod GZRS"]
+        end
+
+        subgraph RGSEC["rg-cloudcart-ENV-cus-sec"]
+            KV["Key Vault — RBAC<br/>purge protection ON in prod ONLY"]
+            MI["User-assigned identities, one per tier"]
+        end
+
+        subgraph RGMON["rg-cloudcart-ENV-cus-mon"]
+            LAW["Log Analytics<br/>dev CAPPED 0.5 GB/day · others uncapped"]
+            MON["8 metric alerts + 2 log alerts<br/>cap alerts only where a cap exists"]
+            RSV["Recovery Services vault — protects nothing"]
+        end
+    end
+
+    Users --> AGW
+    AGW --> AKS
+    Ops --> BAS
+    BAS -.-> AKS
+    AKS --> PE
+    PE --> SQL
+    PE --> RDS
+    PE --> KV
+    PE --> ST
+    PDNS -.resolves.-> PEP
+    AKS --> EGRESS
+    EGRESS -->|"dev, qa"| NATGW
+    EGRESS -->|"stage, prod"| AFW
+    NATGW --> Users
+    AFW --> Users
+    AKS -.workload identity.-> MI
+    MI -.RBAC.-> KV
+    MI -.RBAC.-> ST
+    AKS -.diagnostics.-> LAW
+    SQL -.diagnostics.-> LAW
+    KV -.diagnostics.-> LAW
+    LAW --> MON
+```
+
+
+### 3b. What actually differs between environments
+
+The platform is one shape with a small number of switches. Everything below
+comes from the `profile` module — no other module knows which environment it is
+in.
+
+| | `dev` | `qa` | `stage` | `prod` |
+|---|---|---|---|---|
+| **Egress** | NAT Gateway | NAT Gateway | **Firewall Standard** | **Firewall Premium + IDPS** |
+| `outbound_type` | `userAssignedNATGateway` | same | **`userDefinedRouting`** | **`userDefinedRouting`** |
+| Default route | none | none | `0.0.0.0/0` → firewall | `0.0.0.0/0` → firewall |
+| **Ingress** | **none** | AppGW, WAF *Detection* | AppGW, WAF *Prevention* | AppGW, WAF *Prevention* |
+| **API server** | **public**, IP-allowlisted | private | private | private |
+| Data planes | **public**, IP-restricted | private only | private only | private only |
+| Bastion | Developer (free) | Basic | Standard | Standard |
+| AKS SKU tier | Free — **no SLA** | Standard | Standard | Standard |
+| Nodes / size | 1 × `D2s_v4` | 2 × `D2s_v5` | 3 × `D2s_v5` | 3 × `D4s_v5` |
+| User node pool | no | yes | yes | yes |
+| SQL | `GP_S_Gen5_1` serverless | `GP_Gen5_2` | `BC_Gen5_2` zone-redundant | `BC_Gen5_4` zone-redundant |
+| Redis | `B0`, single node, **no SLA** | `B1` HA | `B1` HA | `B3` HA |
+| Storage | LRS | LRS | GZRS | GZRS |
+| Log ingestion | **capped 0.5 GB/day** | uncapped | uncapped | uncapped |
+| KV purge protection | off | off | off | **ON — irreversible** |
+| Resource locks | off | off | off | **on** |
+| Defender | off | off | off | **on** |
+
+Two rows change the topology rather than a setting, which is why a single
+diagram needs the branch at `EGRESS`: **egress** and **ingress**. The rest are
+sizing or policy on an identical shape.
+
+`dev` is the outlier on three rows — the only environment with no ingress, a
+public API server and a public data plane. It is also the only one that has
+ever run.
+
+### 3c. The original design, abandoned
+
+> Kept as the design record. This is the VM Scale Set topology with an
+> Azure Firewall that the platform was specified as and **never built** —
+> compute became AKS (§6b) and dev/qa egress became a NAT Gateway (§6c).
 
 ```mermaid
 flowchart TB
@@ -290,7 +412,7 @@ flowchart TB
 ```
 
 
-### 3b. As built — `dev`, before decommissioning
+### 3d. As built — `dev`, before decommissioning
 
 What 149 resources actually looked like. Every difference from §3a is a cost or
 quota decision recorded in §6a-§6c, not a design change.

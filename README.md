@@ -28,94 +28,105 @@ and differentiated by variables rather than by code.
 
 ## The platform
 
-What `dev` actually ran — 149 resources, before it was decommissioned. The
-[design](docs/ARCHITECTURE.md) had an Azure Firewall inspecting all egress, an
-Application Gateway fronting the app tier, and two VM Scale Sets in separate
-subnets. None of those were built, and §6a–§6c record why: quota and cost,
-decided deliberately rather than drifted into.
+One shape across all four environments, differentiated by variables rather
+than by code. Labels carry the environments each component applies to.
 
 ```mermaid
 flowchart TB
     Users(["Users / Internet"])
-    Ops(["Operator laptop"])
+    Ops(["Operator"])
 
-    subgraph SUB["Azure subscription — dev, Central US"]
+    subgraph SUB["Azure subscription — one per environment"]
 
-        subgraph RGNET["rg-cloudcart-dev-cus-net"]
+        subgraph RGNET["rg-cloudcart-ENV-cus-net"]
             direction TB
-            subgraph VNET["VNet 10.10.0.0/16"]
+
+            subgraph VNET["VNet 10.x.0.0/16 — dev .10 / qa .20 / prod .30 / stage .40"]
                 direction TB
 
-                subgraph EDGE["Edge"]
-                    BAS["Azure Bastion — Developer SKU<br/>attaches by VNet ID, no subnet, free"]
-                    NAT["NAT Gateway + public IP<br/>~$35/mo — the ONLY egress path"]
+                AGW["Application Gateway WAF v2<br/>snet-agw /24<br/>qa Detection · stage + prod Prevention<br/>NOT in dev"]
+
+                subgraph AKSNET["snet-aks /20"]
+                    AKS["AKS — Azure CNI Overlay + network policy<br/>dev 1 node Free SKU, PUBLIC API + IP allowlist<br/>qa 2 · stage 3 · prod 3 nodes, Standard SKU, PRIVATE API<br/>user node pool in qa, stage, prod"]
                 end
 
-                subgraph AKSNET["snet-aks-dev-cus 10.10.16.0/20"]
-                    AKS["AKS — 1 node, Standard_D2s_v4<br/>PUBLIC API server, IP-allowlisted<br/>Free SKU tier, NO control-plane SLA<br/>Azure CNI Overlay + network policy"]
+                TIERS["snet-app /22 · snet-biz /22<br/>snet-db /24 · snet-mgmt /24<br/>allocated, NSG'd, EMPTY —<br/>the VMSS tiers AKS replaced"]
+
+                subgraph PEP["snet-pep /24 — private endpoints"]
+                    PE["PE: SQL · Redis :10000<br/>Key Vault · Storage"]
                 end
 
-                subgraph PEP["snet-pep-dev-cus 10.10.13.0/24"]
-                    PESQL["PE: SQL"]
-                    PERDS["PE: Redis :10000"]
-                    PEKV["PE: Key Vault"]
-                    PEST["PE: Storage"]
-                end
-
-                EMPTY["snet-app /22, snet-biz /22,<br/>snet-db /24, snet-mgmt /24<br/>ALLOCATED with NSGs and NAT,<br/>and permanently EMPTY —<br/>the tier subnets AKS replaced"]
-                RESV["Reserved, never allocated:<br/>AzureFirewallSubnet 10.10.0.0/26,<br/>AzureFirewallManagementSubnet 10.10.0.64/26,<br/>GatewaySubnet 10.10.0.192/26,<br/>snet-agw 10.10.1.0/24"]
+                BASSN["AzureBastionSubnet /26<br/>used by Basic and Standard;<br/>empty in dev, where Developer<br/>attaches by VNet ID"]
             end
-            PDNS["Private DNS zones<br/>4 zones, linked to the VNet"]
+
+            EGRESS{"EGRESS — one path, chosen per environment"}
+            NATGW["NAT Gateway ~$35/mo<br/>dev + qa<br/>outbound_type = userAssignedNATGateway<br/>NO inspection, any destination"]
+            AFW["Azure Firewall<br/>stage Standard ~$913/mo · prod Premium ~$1,278 + IDPS<br/>outbound_type = userDefinedRouting<br/>0.0.0.0/0 -> firewall private IP"]
+
+            BAS["Azure Bastion<br/>dev Developer · qa Basic · stage + prod Standard"]
+            PDNS["Private DNS zones — 4, linked to the VNet"]
         end
 
-        subgraph RGDATA["rg-cloudcart-dev-cus-data"]
-            SQL["Azure SQL — GP_S_Gen5_1 serverless<br/>Entra-only auth, NO SQL login exists"]
-            RDS["Azure Managed Redis — Balanced_B0<br/>single node, NO SLA, keys disabled"]
-            ST["Storage — LRS, shared keys DISABLED"]
+        subgraph RGDATA["rg-cloudcart-ENV-cus-data"]
+            SQL["Azure SQL — Entra-only auth, no SQL login exists<br/>dev GP_S_Gen5_1 serverless · qa GP_Gen5_2<br/>stage BC_Gen5_2 · prod BC_Gen5_4, zone redundant"]
+            RDS["Azure Managed Redis — access keys disabled<br/>dev B0 single node NO SLA<br/>qa + stage B1 HA · prod B3 HA"]
+            ST["Storage — shared keys disabled<br/>dev + qa LRS · stage + prod GZRS"]
         end
 
-        subgraph RGSEC["rg-cloudcart-dev-cus-sec"]
-            KV["Key Vault — RBAC, purge protection OFF"]
+        subgraph RGSEC["rg-cloudcart-ENV-cus-sec"]
+            KV["Key Vault — RBAC<br/>purge protection ON in prod ONLY"]
             MI["User-assigned identities, one per tier"]
         end
 
-        subgraph RGMON["rg-cloudcart-dev-cus-mon"]
-            LAW["Log Analytics — CAPPED at 0.5 GB/day"]
-            MON["8 metric alerts + 2 log alerts<br/>both cap alerts FIRED on a real breach"]
-            RSV["Recovery Services vault<br/>protects NOTHING by design"]
+        subgraph RGMON["rg-cloudcart-ENV-cus-mon"]
+            LAW["Log Analytics<br/>dev CAPPED 0.5 GB/day · others uncapped"]
+            MON["8 metric alerts + 2 log alerts<br/>cap alerts only where a cap exists"]
+            RSV["Recovery Services vault — protects nothing"]
         end
     end
 
-    Users -.->|"no WAF, no App Gateway<br/>AKS provisions its own LB"| AKS
-    Ops -->|"kubectl, via Azure RBAC<br/>Cluster Admin at cluster scope"| AKS
+    Users --> AGW
+    AGW --> AKS
     Ops --> BAS
-    AKS --> PESQL
-    AKS --> PERDS
-    AKS --> PEKV
-    AKS --> PEST
-    PESQL --> SQL
-    PERDS --> RDS
-    PEKV --> KV
-    PEST --> ST
+    BAS -.-> AKS
+    AKS --> PE
+    PE --> SQL
+    PE --> RDS
+    PE --> KV
+    PE --> ST
     PDNS -.resolves.-> PEP
-    AKS -->|"UNFILTERED egress<br/>no inspection, any destination"| NAT
-    NAT --> Users
-    MI -.workload identity.-> KV
-    MI -.workload identity.-> ST
+    AKS --> EGRESS
+    EGRESS -->|"dev, qa"| NATGW
+    EGRESS -->|"stage, prod"| AFW
+    NATGW --> Users
+    AFW --> Users
+    AKS -.workload identity.-> MI
+    MI -.RBAC.-> KV
+    MI -.RBAC.-> ST
     AKS -.diagnostics.-> LAW
     SQL -.diagnostics.-> LAW
     KV -.diagnostics.-> LAW
     LAW --> MON
 ```
 
-| Designed | Built | Why |
-|---|---|---|
-| Azure Firewall, all egress inspected | **NAT Gateway, nothing inspected** | ~$913/mo vs ~$35 |
-| App Gateway WAF v2 | **No ingress at all** | ~$260/mo, and dev ran no workload |
-| Two VM Scale Sets, NSG between them | **One AKS cluster, tiers as namespaces** | The tier boundary moved from the network into the cluster |
-| 3 nodes across 3 zones | **1 node, 0 zones** | 3 nodes is 6 vCPU; the quota is 4 |
+Two rows change the **topology** rather than a setting, which is why the
+diagram branches at `EGRESS`:
 
-Both diagrams — as designed and as built — are in
+| | `dev` | `qa` | `stage` | `prod` |
+|---|---|---|---|---|
+| **Egress** | NAT Gateway | NAT Gateway | **Firewall Standard** | **Firewall Premium + IDPS** |
+| **Ingress** | **none** | AppGW, WAF *Detection* | AppGW, WAF *Prevention* | AppGW, WAF *Prevention* |
+| API server | **public**, allowlisted | private | private | private |
+| Data planes | **public**, IP-restricted | private only | private only | private only |
+| Log ingestion | **capped 0.5 GB/day** | uncapped | uncapped | uncapped |
+| Purge protection / locks | off | off | off | **on — irreversible** |
+
+`dev` is the outlier on four of those rows — the only environment with no
+ingress, a public API server and a public data plane. It is also the only
+one that has ever run.
+
+The full matrix, the abandoned original design, and a diagram of `dev`
+exactly as it was built are in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3.
 
 ---
