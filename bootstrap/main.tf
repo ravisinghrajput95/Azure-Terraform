@@ -47,7 +47,6 @@ resource "azurerm_storage_account" "tfstate" {
 
   # Static, non-expiring, unscopable, and grants total control of every state
   # file. The backends use use_azuread_auth = true, so nothing here needs it.
-  # Defaulted to true only because that is the live account's current state.
   shared_access_key_enabled = var.shared_access_key_enabled
 
   blob_properties {
@@ -59,6 +58,17 @@ resource "azurerm_storage_account" "tfstate" {
     # DELETION, which is the failure that ends a platform rather than
     # inconveniencing it.
     dynamic "delete_retention_policy" {
+      for_each = var.blob_soft_delete_retention_days > 0 ? [1] : []
+
+      content {
+        days = var.blob_soft_delete_retention_days
+      }
+    }
+
+    # Blob soft delete does NOT cover deleting the container. Removing a
+    # container takes every blob inside it with it, and without this the blob
+    # policy above never gets the chance to apply.
+    dynamic "container_delete_retention_policy" {
       for_each = var.blob_soft_delete_retention_days > 0 ? [1] : []
 
       content {

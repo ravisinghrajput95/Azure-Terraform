@@ -63,9 +63,15 @@ stated reason.
 | Key Vault purge protection **off** in dev, qa and stage | Cannot be disabled once on, and vault names are deterministic — so one teardown strands the name for the full retention and the environment cannot be rebuilt. | `profile` |
 | Data-plane public access **on** in dev, IP-restricted | With it off, an operator laptop cannot read a secret at all, so no deployment could be verified without a jump host. `default_action` is Deny. | `profile` |
 | AKS API server **public** in dev, IP-restricted | A private cluster puts `kubectl` inside the VNet only. The allowlist holds the operator address and the NAT Gateway egress address. | `aks` |
-| Shared key access **enabled** on the state account | Live state predating this code. `DEPLOYMENT.md` claimed otherwise; it is now accurate. Closing it is a one-variable change. | `bootstrap` |
-| Blob soft delete **disabled** on the state account | Versioning covers overwrite but not deletion. Same one-variable fix. | `bootstrap` |
-| Cluster-admin granted to a **user**, not a group | No Entra group exists in this tenant. A governance weakness anywhere with a directory. | `terraform.tfvars` |
+| Cluster-admin granted to a **user**, not a group | Confirmed 2026-08-14: this tenant contains **zero** Entra groups, so there is nothing to grant to. The grant is a scoped, auditable Azure RBAC role assignment at cluster scope. A governance weakness anywhere with a real directory. | `terraform.tfvars` |
+| No egress filtering or inspection | Azure Firewall is ~$900/month against a $200 credit, so the `firewall` module was never written and egress is an unfiltered NAT Gateway. A compromised pod can reach any internet address. See ARCHITECTURE.md §6c. | not built |
+
+### Closed
+
+| Was | Closed |
+|---|---|
+| Shared key access **enabled** on the state account — an 88-character key granted total control of every environment's state, bypassing RBAC and attributable to no one | 2026-08-14. `allowSharedKeyAccess = false`. Key auth now rejected; Entra reads, writes and locking verified via `terraform plan`. |
+| Blob soft delete **disabled** on the state account | 2026-08-14. 30 days, on blobs *and* containers — container deletion takes every blob with it regardless of the blob policy. |
 
 Production guardrails in the `profile` module reject a `prod` environment that
 is not HA, not private, on the Free SKU tier, or without backup, alerting,

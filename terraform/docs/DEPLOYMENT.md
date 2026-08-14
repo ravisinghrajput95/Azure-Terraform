@@ -126,7 +126,7 @@ The backend cannot live in the state it stores. Created manually or by a
 separate bootstrap config:
 
 1. Resource group for Terraform state
-2. Storage account — versioning on, public access off, `shared_access_key_enabled = false`
+2. Storage account — versioning on, public access off, `shared_access_key_enabled = false`, blob **and container** soft delete at 30 days
 3. Blob container per environment
 4. Entra service principal or workload identity federation, with `Storage Blob Data Contributor` on the container
 5. RBAC for the deployment identity on the target subscription

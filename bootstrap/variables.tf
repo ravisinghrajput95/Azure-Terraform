@@ -43,21 +43,33 @@ variable "shared_access_key_enabled" {
   description = <<-EOT
     Whether the account accepts shared-key authentication.
 
-    SHOULD be false: shared keys are static, non-expiring, unscopable and grant
-    total control of every state file, and the backends here already use
-    `use_azuread_auth = true`. It defaults to TRUE only because that is the
-    account's current live state, and flipping it is a change to a live backend
-    that deserves to be made deliberately rather than discovered during an
-    unrelated apply. See README.md.
+    FALSE, and set that way on the live account on 2026-08-14. Shared keys are
+    static, non-expiring, unscopable, attributable to no one, and grant total
+    control of every state file in the account. Every backend here uses
+    `use_azuread_auth = true`, so nothing needs them.
+
+    Verified after the change: key auth returns "Key based authentication is not
+    permitted on this storage account", while `terraform plan` against dev still
+    reads state, takes the lock and releases it.
+
+    Setting this back to true reopens a path that bypasses RBAC entirely.
   EOT
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "blob_soft_delete_retention_days" {
-  description = "Blob soft-delete window. 0 disables it, which is the account's current live state. Versioning already protects against overwrite; soft delete is what protects against deletion."
+  description = <<-EOT
+    Soft-delete window for blobs and containers. 0 disables both.
+
+    30, and set that way on the live account on 2026-08-14. Versioning was
+    already on and protects against overwrite -- a truncated state push rolls
+    back to the previous version. Soft delete is the separate protection against
+    DELETION, which is the failure that ends a platform rather than
+    inconveniencing it.
+  EOT
   type        = number
-  default     = 0
+  default     = 30
 }
 
 variable "tags" {
