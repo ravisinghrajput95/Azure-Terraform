@@ -58,6 +58,11 @@ Design rationale is in
 Documented rather than quietly carried. Each is a dev-environment trade with a
 stated reason.
 
+> **No environment is currently deployed.** `dev` was decommissioned on
+> 2026-08-14. The trades below describe the configuration, which is unchanged
+> and would apply again on a rebuild — they are not descriptions of live
+> exposure today.
+
 | Weakness | Why | Where |
 |---|---|---|
 | Key Vault purge protection **off** in dev, qa and stage | Cannot be disabled once on, and vault names are deterministic — so one teardown strands the name for the full retention and the environment cannot be rebuilt. | `profile` |

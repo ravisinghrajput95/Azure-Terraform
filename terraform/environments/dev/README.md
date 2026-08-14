@@ -1,7 +1,19 @@
 # Environment: `dev`
 
-Free-tier-safe development environment. This is the **only** environment
-deployable on the current subscription.
+Free-tier-safe development environment. The only environment that has ever been
+deployed, and the only one deployable on the current subscription.
+
+> **DECOMMISSIONED 2026-08-14.** Destroyed deliberately to stop spend, not
+> because anything failed. 134 resources removed, the Key Vault purged, all 4
+> regional vCPU released. `terraform state list` returns nothing and Azure
+> holds no `cloudcart-dev` resource.
+>
+> The configuration below is unchanged and the state container `tfstate-dev`
+> still exists, so `terraform apply` rebuilds it. What does not come back for
+> free is the verification: the proven AKS RBAC access path, the two cap alerts
+> that fired on a real breach, and the `kube-audit` ingestion fix that was
+> applied but never measured — the workspace was still `OverQuota` from before
+> the fix when the environment was destroyed.
 
 ---
 

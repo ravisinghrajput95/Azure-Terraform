@@ -252,4 +252,7 @@ artifacts/
 *.orig
 backend.conf
 # Saved plan files without an extension
+# Plan files, including suffixed ones like tfplan.destroy — they are binary,
+# can be large, and a saved plan embeds resource attributes from state.
 tfplan
+tfplan.*

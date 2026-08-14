@@ -5,7 +5,8 @@ Three-tier application topology on AKS, with all data services reachable only
 through private endpoints, controlled egress, and no public IP on any compute
 resource.
 
-> **Status: dev deployed; qa, stage and prod written.** 22 modules built. 19 are instantiated
+> **Status: NOTHING IS DEPLOYED.** dev was decommissioned on 2026-08-14; qa, stage
+> and prod are written and have never been applied. 22 modules built. 19 are instantiated
 > by dev's root module; `application-gateway` and `load-balancer` are written
 > but not deployed by dev — AKS provisions its own load balancer. Compute is
 > AKS — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6b for what moving
@@ -16,7 +17,7 @@ resource.
 
 | Env | CIDR | State | Blocker |
 |---|---|---|---|
-| `dev` | `10.10.0.0/16` | **Deployed and verified.** 149 resources, no drift | — |
+| `dev` | `10.10.0.0/16` | **Decommissioned 2026-08-14.** Was deployed and verified — 149 resources, no drift — then destroyed to stop spend. Rebuildable from this repo | — |
 | `qa` | `10.20.0.0/16` | **Written, validates, plans** (146 resources). Never applied | Needs 6 vCPU steady / 8 peak against a regional limit of 4, and ~$1,062/month. See [`environments/qa/README.md`](environments/qa/README.md) |
 | `stage` | `10.40.0.0/16` | **Written, validates, plans** (143 resources). Never applied | 10 vCPU steady / 16 peak vs a limit of 4, and ~$2,148/month — of which the firewall is ~$913. See [`environments/stage/README.md`](environments/stage/README.md) |
 | `prod` | `10.30.0.0/16` | **Written, validates, plans** (146 resources). Never applied | 24 vCPU steady / 80 peak, ~$3,242/month. See [`environments/prod/README.md`](environments/prod/README.md) |
@@ -28,10 +29,14 @@ applied**: ~$913/month Standard, ~$1,278 Premium. See
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6c for why dev and qa use a NAT
 Gateway instead, and therefore have no egress filtering at all.
 
-**Only `dev` has ever run.** Three of the four environments and one of the 22
-modules exist as configuration that plans and has never touched Azure. That is
-recorded in each README rather than left to be assumed from the fact that the
-code is complete.
+**`dev` is the only environment that has ever run, and it no longer does.** It
+was deployed, verified against the Azure API, and then destroyed on 2026-08-14:
+134 resources removed, the Key Vault purged, all 4 regional vCPU released, and
+the state backend left intact so it can be rebuilt.
+
+Everything else — three environments and the `firewall` module — is
+configuration that plans and has never touched Azure. That is recorded in each
+README rather than left to be assumed from the fact that the code is complete.
 
 ---
 
