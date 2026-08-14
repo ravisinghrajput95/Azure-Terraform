@@ -26,9 +26,14 @@ output "private_ip_address" {
   value       = try(azurerm_firewall.this.ip_configuration[0].private_ip_address, null)
 }
 
+output "public_ip_address" {
+  description = "The firewall's public egress address. This is the source address the internet sees for every workload routed through it, and the value an external allowlist needs."
+  value       = azurerm_public_ip.this.ip_address
+}
+
 output "public_ip_address_id" {
-  description = "ID of the attached data-plane public IP."
-  value       = var.public_ip_id
+  description = "ID of the data-plane public IP created by this module."
+  value       = azurerm_public_ip.this.id
 }
 
 ################################################################################

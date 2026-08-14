@@ -1,4 +1,51 @@
 ################################################################################
+# Public addresses
+#
+# Created here rather than taken as IDs, matching `bastion` and
+# `application-gateway`. A root module declares no resources of its own, so a
+# module that needs an address has to make it.
+#
+# Standard SKU and Static allocation are not inputs. Azure Firewall requires
+# both and rejects Basic or Dynamic with an error that does not say which
+# property is wrong — offering them as variables would only create a way to get
+# it wrong.
+#
+# The zones must MATCH the firewall's. A zone-redundant firewall in front of a
+# zonal public IP is accepted and leaves the address as the single point of
+# failure the zone spread was bought to remove.
+################################################################################
+
+resource "azurerm_public_ip" "this" {
+  name                = var.public_ip_name
+  resource_group_name = var.resource_group_name
+  location            = var.location
+
+  allocation_method = "Static"
+  sku               = "Standard"
+  zones             = length(var.zones) > 0 ? var.zones : null
+
+  tags = var.tags
+}
+
+resource "azurerm_public_ip" "management" {
+  count = local.has_management_plane ? 1 : 0
+
+  # Derived when not supplied. Making this required would add a failure mode
+  # whose error ("the argument name is required") is exactly the unhelpful
+  # message a precondition would have existed to replace — and the resource
+  # error fires first, so the precondition could never run.
+  name                = coalesce(var.management_public_ip_name, "pip-mgmt-${var.name}")
+  resource_group_name = var.resource_group_name
+  location            = var.location
+
+  allocation_method = "Static"
+  sku               = "Standard"
+  zones             = length(var.zones) > 0 ? var.zones : null
+
+  tags = var.tags
+}
+
+################################################################################
 # Firewall policy
 #
 # The policy holds the rules; the firewall holds the addresses. Separating them
@@ -89,7 +136,7 @@ resource "azurerm_firewall" "this" {
   ip_configuration {
     name                 = "ipc-${var.name}"
     subnet_id            = var.subnet_id
-    public_ip_address_id = var.public_ip_id
+    public_ip_address_id = azurerm_public_ip.this.id
   }
 
   # Required for the Basic tier and for forced tunnelling. The management plane
@@ -100,7 +147,7 @@ resource "azurerm_firewall" "this" {
     content {
       name                 = "ipc-mgmt-${var.name}"
       subnet_id            = var.management_subnet_id
-      public_ip_address_id = var.management_public_ip_id
+      public_ip_address_id = azurerm_public_ip.management[0].id
     }
   }
 
@@ -134,14 +181,6 @@ resource "azurerm_firewall" "this" {
         "sku_tier is \"Basic\" but no management_subnet_id was supplied.",
         "The Basic tier ALWAYS requires a separate AzureFirewallManagementSubnet and its own public IP — unlike Standard and Premium, where they are needed only for forced tunnelling.",
         "The apply fails without naming the missing subnet."
-      ])
-    }
-
-    precondition {
-      condition = !local.management_subnet_without_ip
-      error_message = join(" ", [
-        "management_subnet_id is set but management_public_ip_id is null.",
-        "The management plane requires its own public IP and cannot share the data-plane address."
       ])
     }
 

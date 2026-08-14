@@ -84,8 +84,8 @@ variable "subnet_id" {
   type        = string
 }
 
-variable "public_ip_id" {
-  description = "ID of the firewall's public IP. Must be Standard SKU and Static — Azure rejects Basic or Dynamic, and the error does not say which."
+variable "public_ip_name" {
+  description = "Name of the firewall's data-plane public IP, which this module creates. Azure requires Standard SKU with Static allocation and rejects anything else with an error that does not name the offending property, so neither is an input."
   type        = string
 }
 
@@ -95,8 +95,8 @@ variable "management_subnet_id" {
   default     = null
 }
 
-variable "management_public_ip_id" {
-  description = "ID of the management public IP. Required whenever management_subnet_id is set — the management plane needs its own address and cannot share the data-plane IP."
+variable "management_public_ip_name" {
+  description = "Name of the management public IP, created by this module whenever management_subnet_id is set. Derived from the firewall name when omitted — the management plane needs its own address and cannot share the data-plane IP, so this is not a thing to be able to forget."
   type        = string
   default     = null
 }

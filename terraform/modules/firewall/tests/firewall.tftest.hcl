@@ -19,8 +19,8 @@ variables {
   location            = "centralus"
   tags                = { environment = "test" }
 
-  subnet_id    = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet/subnets/AzureFirewallSubnet"
-  public_ip_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/publicIPAddresses/pip-afw"
+  subnet_id      = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet/subnets/AzureFirewallSubnet"
+  public_ip_name = "pip-afw-cloudcart-test-cus-001"
 
   network_rule_collections = {
     "core-egress" = {
@@ -82,8 +82,8 @@ run "rejects_a_management_subnet_with_the_wrong_name" {
   command = plan
 
   variables {
-    management_subnet_id    = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet/subnets/snet-mgmt"
-    management_public_ip_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/publicIPAddresses/pip-mgmt"
+    management_subnet_id      = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet/subnets/snet-mgmt"
+    management_public_ip_name = "pip-afw-mgmt-cloudcart-test-cus-001"
   }
 
   expect_failures = [azurerm_firewall.this]
@@ -100,23 +100,28 @@ run "rejects_basic_tier_without_a_management_subnet" {
   expect_failures = [azurerm_firewall.this]
 }
 
-run "rejects_a_management_subnet_with_no_public_ip" {
+# The management address is DERIVED when not supplied, rather than being a
+# required input that can be forgotten. Omitting it is not an error.
+run "derives_the_management_public_ip_name_when_omitted" {
   command = plan
 
   variables {
     management_subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet/subnets/AzureFirewallManagementSubnet"
   }
 
-  expect_failures = [azurerm_firewall.this]
+  assert {
+    condition     = azurerm_public_ip.management[0].name == "pip-mgmt-afw-cloudcart-test-cus-001"
+    error_message = "The management public IP name should be derived from the firewall name."
+  }
 }
 
 run "accepts_basic_tier_with_a_complete_management_plane" {
   command = plan
 
   variables {
-    sku_tier                = "Basic"
-    management_subnet_id    = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet/subnets/AzureFirewallManagementSubnet"
-    management_public_ip_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/publicIPAddresses/pip-mgmt"
+    sku_tier                  = "Basic"
+    management_subnet_id      = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet/subnets/AzureFirewallManagementSubnet"
+    management_public_ip_name = "pip-afw-mgmt-cloudcart-test-cus-001"
   }
 
   assert {

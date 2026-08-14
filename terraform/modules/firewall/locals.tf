@@ -29,8 +29,6 @@ locals {
   has_management_plane = var.management_subnet_id != null
 
   basic_without_management = var.sku_tier == "Basic" && !local.has_management_plane
-
-  management_subnet_without_ip = local.has_management_plane && var.management_public_ip_id == null
 }
 
 ################################################################################

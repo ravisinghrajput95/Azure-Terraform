@@ -122,6 +122,19 @@ any Azure call.
 The management subnet is **always** required for the Basic tier — not only for
 forced tunnelling, which is the case people remember.
 
+### Addresses are created here, and their zones must match
+
+Both public IPs are created by this module, as `bastion` and
+`application-gateway` do, because a root module declares no resources of its
+own. Standard SKU and Static allocation are fixed rather than offered as
+inputs: Azure requires both and rejects anything else with an error that does
+not name the offending property, so a variable would only be a way to get it
+wrong.
+
+Their zones are set to the firewall's. A zone-redundant firewall in front of a
+**zonal** public IP is accepted by Azure and leaves the address as exactly the
+single point of failure the zone spread was bought to remove.
+
 ---
 
 ## Policy, not classic rules
@@ -148,8 +161,8 @@ module "firewall" {
   sku_tier = module.profile.profile.firewall_sku_tier
   zones    = module.profile.profile.compute_zones
 
-  subnet_id    = module.networking.subnet_ids["AzureFirewallSubnet"]
-  public_ip_id = module.public_ip.ids["firewall"]
+  subnet_id      = module.networking.subnet_ids["AzureFirewallSubnet"]
+  public_ip_name = "pip-afw-${module.naming.base}-001"
 
   # Required because the network rules below use FQDNs.
   dns_proxy_enabled = true
@@ -197,8 +210,9 @@ resource, so the two can be applied independently — see `ARCHITECTURE.md` §1.
 |---|---|---|
 | `sku_tier` | `"Standard"` | `Basic` needs a management subnet; `Premium` is the only tier with IDPS and TLS inspection |
 | `subnet_id` | — | Must resolve to a subnet named `AzureFirewallSubnet` |
-| `public_ip_id` | — | Standard SKU, Static allocation |
+| `public_ip_name` | — | Created by this module; Standard SKU and Static are fixed, not inputs |
 | `management_subnet_id` | `null` | **Required for Basic** and for forced tunnelling |
+| `management_public_ip_name` | `null` | Derived from the firewall name when omitted |
 | `zones` | `[]` | Free; cross-zone data transfer is not |
 | `dns_proxy_enabled` | `false` | **Required** if any network rule uses FQDNs |
 | `threat_intelligence_mode` | `"Deny"` | `"Alert"` logs and permits |
@@ -212,6 +226,7 @@ resource, so the two can be applied independently — see `ARCHITECTURE.md` §1.
 | Name | Description |
 |---|---|
 | `private_ip_address` | The route table's `VirtualAppliance` next hop |
+| `public_ip_address` | The egress address the internet sees for every routed workload |
 | `policy_id` | For child policies or a second firewall |
 | `security_summary` | Posture in plain language, including every degraded state |
 | `threat_intelligence_enforces` | False when threat intel is Off or Alert |
