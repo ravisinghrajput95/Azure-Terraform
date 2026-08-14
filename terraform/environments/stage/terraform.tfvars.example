@@ -1,0 +1,30 @@
+subscription_id = "<subscription-guid>"
+workload        = "cloudcart"
+location        = "centralus"
+
+owner       = "platform-team@example.com"
+cost_center = "CC-STAGE-001"
+
+criticality         = "medium"
+data_classification = "internal"
+
+# The profile module asserts qa's peak compute footprint fits inside this.
+# It does NOT on the current subscription: qa needs at least 6 vCPU and the
+# regional limit is 4, of which dev holds 2. See README.md.
+subscription_vcpu_quota = 4
+
+# Largely inert in qa, which is private-endpoint only. Kept so that enabling
+# public access temporarily is a profile override rather than a code change.
+deployer_ip_addresses = []
+
+# Entra GROUP object IDs only — a user object ID binds and never matches.
+aks_admin_group_object_ids = []
+
+# Users, groups or service principals, granted via Azure RBAC. Subscription
+# Owner does NOT grant kubectl access.
+aks_cluster_admin_principal_ids = ["<your-object-id>"]
+
+# Key Vault secret ID of the gateway's TLS certificate. Create the certificate
+# in qa's Key Vault out of band and paste its secret ID here. Left unset, the
+# Application Gateway deploys HTTP-only and says so in `ingress_is_encrypted`.
+# application_gateway_certificate_secret_id = "https://kv-cloudcart-qa-xxxx.vault.azure.net/secrets/tls-cert/<version>"

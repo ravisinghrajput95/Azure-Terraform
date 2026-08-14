@@ -5,7 +5,7 @@ Three-tier application topology on AKS, with all data services reachable only
 through private endpoints, controlled egress, and no public IP on any compute
 resource.
 
-> **Status: dev deployed, qa written.** 21 modules built. 19 are instantiated
+> **Status: dev deployed; qa, stage and prod written.** 22 modules built. 19 are instantiated
 > by dev's root module; `application-gateway` and `load-balancer` are written
 > but not deployed by dev — AKS provisions its own load balancer. Compute is
 > AKS — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6b for what moving
@@ -18,19 +18,20 @@ resource.
 |---|---|---|---|
 | `dev` | `10.10.0.0/16` | **Deployed and verified.** 149 resources, no drift | — |
 | `qa` | `10.20.0.0/16` | **Written, validates, plans** (146 resources). Never applied | Needs 6 vCPU steady / 8 peak against a regional limit of 4, and ~$1,062/month. See [`environments/qa/README.md`](environments/qa/README.md) |
-| `stage` | `10.40.0.0/16` | Not written | Requires the **`firewall` module, which was never written** — see below |
-| `prod` | `10.30.0.0/16` | Not written | Same, plus ~24 vCPU at steady state |
+| `stage` | `10.40.0.0/16` | **Written, validates, plans** (143 resources). Never applied | 10 vCPU steady / 16 peak vs a limit of 4, and ~$2,148/month — of which the firewall is ~$913. See [`environments/stage/README.md`](environments/stage/README.md) |
+| `prod` | `10.30.0.0/16` | **Written, validates, plans** (146 resources). Never applied | 24 vCPU steady / 80 peak, ~$3,242/month. See [`environments/prod/README.md`](environments/prod/README.md) |
 
-**`stage` and `prod` are blocked on more than cost.** Both set
-`enable_firewall = true` and `enable_nat_gateway = false` in the `profile`
-module, so their egress strategy is Azure Firewall — and the `firewall` module
-is an empty `.gitkeep` directory that was never written, for the cost reason in
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6c.
+`stage` and `prod` both egress through an **Azure Firewall** rather than a NAT
+Gateway — that is what `stage` exists to validate, and the `firewall` module
+was written for them. Like the environments themselves it has **never been
+applied**: ~$913/month Standard, ~$1,278 Premium. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6c for why dev and qa use a NAT
+Gateway instead, and therefore have no egress filtering at all.
 
-That is not a detail to work around by overriding them to a NAT Gateway:
-`stage`'s own profile says the firewall topology, its UDRs and its egress rules
-are *the reason stage exists*. A stage environment without a firewall validates
-nothing that qa does not already cover.
+**Only `dev` has ever run.** Three of the four environments and one of the 22
+modules exist as configuration that plans and has never touched Azure. That is
+recorded in each README rather than left to be assumed from the fact that the
+code is complete.
 
 ---
 
@@ -65,6 +66,7 @@ terraform/
     ├── nsg                      Network security groups and associations
     ├── route-table              UDRs and subnet associations
     ├── private-dns              Private DNS zones and VNet links
+    ├── firewall                 Azure Firewall, policy, rule collections
     ├── bastion                  Azure Bastion
     ├── log-analytics            Log Analytics workspace
     ├── diagnostics              Shared diagnostic-settings helper
@@ -80,13 +82,14 @@ terraform/
     └── recovery-services        Recovery Services vault and backup policies
 ```
 
-`firewall`, `vm` and `autoscale` are **empty placeholder directories**, not
-modules. `vm` and `autoscale` were superseded by AKS (ARCHITECTURE.md §6b).
-`firewall` was never written: Azure Firewall is ~$900/month against a $200
-credit, so **egress is a NAT Gateway created by the `networking` module**
-(~$35/month) and the cluster runs `outbound_type = "userAssignedNATGateway"`.
-ARCHITECTURE.md still describes the firewall-based egress design throughout —
-that is the design record, not what is deployed.
+`vm` and `autoscale` are **empty placeholder directories**, not modules — both
+were superseded by AKS (ARCHITECTURE.md §6b).
+
+`firewall` is written but **has never been applied**, because Azure Firewall is
+~$913/month against a $200 credit. `dev` and `qa` therefore egress through a
+NAT Gateway (~$35/month) with `outbound_type = "userAssignedNATGateway"` and no
+egress filtering at all; `stage` and `prod` use the firewall with
+`userDefinedRouting`, and have never run.
 
 Each environment root module is a thin composition layer: it wires modules
 together and supplies variables. It contains no resource blocks of its own.
