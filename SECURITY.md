@@ -39,7 +39,7 @@ Out of scope:
 ## Security posture
 
 Design rationale is in
-[`terraform/docs/ARCHITECTURE.md`](terraform/docs/ARCHITECTURE.md) §4.
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §4.
 
 | Control | How |
 |---|---|

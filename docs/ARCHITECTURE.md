@@ -9,7 +9,8 @@ describe a platform that was never built, and those parts are marked rather
 than rewritten. §3a is the design; §3b is what actually ran. §6a, §6b and §6c
 record what changed and why.
 
-For current state, see [`../README.md`](../README.md).
+For current state, see the [repository README](../README.md) and
+[`terraform/README.md`](../terraform/README.md).
 
 ---
 

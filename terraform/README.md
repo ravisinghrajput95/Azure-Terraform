@@ -9,7 +9,7 @@ resource.
 > and prod are written and have never been applied. 22 modules built. 19 are instantiated
 > by dev's root module; `application-gateway` and `load-balancer` are written
 > but not deployed by dev — AKS provisions its own load balancer. Compute is
-> AKS — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6b for what moving
+> AKS — see [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) §6b for what moving
 > the tier boundary from subnets into a cluster changes, and why dev's cluster
 > is deliberately not highly available.
 
@@ -26,7 +26,7 @@ resource.
 Gateway — that is what `stage` exists to validate, and the `firewall` module
 was written for them. Like the environments themselves it has **never been
 applied**: ~$913/month Standard, ~$1,278 Premium. See
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6c for why dev and qa use a NAT
+[`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) §6c for why dev and qa use a NAT
 Gateway instead, and therefore have no egress filtering at all.
 
 **`dev` is the only environment that has ever run, and it no longer does.** It
@@ -42,11 +42,14 @@ README rather than left to be assumed from the fact that the code is complete.
 
 ## Documentation
 
+Architecture, networking and deployment docs live at
+[`docs/`](../docs) in the repository root.
+
 | Document | Contents |
 |---|---|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Design decisions and rejected alternatives, traffic flow, architecture diagram, Zero Trust control mapping, cost analysis, open decisions |
-| [`docs/NETWORKING.md`](docs/NETWORKING.md) | CIDR allocation, subnet plan, NSG rule matrix, routing, private DNS, CAF naming convention |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Module dependency graph, critical path, six-phase deployment order, gates, rollback characteristics |
+| [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) | Design decisions and rejected alternatives, traffic flow, architecture diagram, Zero Trust control mapping, cost analysis, open decisions |
+| [`../docs/NETWORKING.md`](../docs/NETWORKING.md) | CIDR allocation, subnet plan, NSG rule matrix, routing, private DNS, CAF naming convention |
+| [`../docs/DEPLOYMENT.md`](../docs/DEPLOYMENT.md) | Module dependency graph, critical path, six-phase deployment order, gates, rollback characteristics |
 
 ---
 
@@ -54,8 +57,6 @@ README rather than left to be assumed from the fact that the code is complete.
 
 ```
 terraform/
-├── docs/                        Architecture, networking and deployment docs
-│
 ├── environments/                One root module per environment
 │   ├── dev/                     10.10.0.0/16
 │   ├── qa/                      10.20.0.0/16
@@ -122,7 +123,7 @@ Every module ships `main.tf`, `variables.tf`, `outputs.tf`, `locals.tf` and
 ## Getting started
 
 Terraform state lives in an Azure Storage account that must be bootstrapped
-before first use — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) §2, Phase 0.
+before first use — see [`../docs/DEPLOYMENT.md`](../docs/DEPLOYMENT.md) §2, Phase 0.
 
 ```bash
 cd terraform/environments/dev

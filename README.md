@@ -62,9 +62,9 @@ decision lives, not only here.
 ## Layout
 
 ```
+docs/                architecture, networking and deployment documentation
 bootstrap/           Phase 0 — the state backend, on local state by necessity
 terraform/
-├── docs/            architecture, networking and deployment documentation
 ├── environments/    one root module per environment (dev, qa, stage, prod)
 └── modules/         22 reusable modules
 Makefile             every check CI runs, plus plan/apply per environment
@@ -88,9 +88,9 @@ test the preconditions, not the provider: a test asserting that
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Conventions that are load-bearing rather than stylistic, and the failures behind them |
 | [`SECURITY.md`](SECURITY.md) | Security posture, and the weaknesses deliberately accepted |
 | [`bootstrap/README.md`](bootstrap/README.md) | Why the backend runs on local state, and how it was adopted by import |
-| [`terraform/docs/ARCHITECTURE.md`](terraform/docs/ARCHITECTURE.md) | Design decisions and rejected alternatives, as-designed and as-built diagrams, Zero Trust mapping, cost |
-| [`terraform/docs/NETWORKING.md`](terraform/docs/NETWORKING.md) | CIDR allocation, subnet plan, NSG rule matrix, routing, private DNS, CAF naming |
-| [`terraform/docs/DEPLOYMENT.md`](terraform/docs/DEPLOYMENT.md) | Module dependency graph, deployment phases, gates, rollback characteristics |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Design decisions and rejected alternatives, as-designed and as-built diagrams, Zero Trust mapping, cost |
+| [`docs/NETWORKING.md`](docs/NETWORKING.md) | CIDR allocation, subnet plan, NSG rule matrix, routing, private DNS, CAF naming |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Module dependency graph, deployment phases, gates, rollback characteristics |
 
 ---
 

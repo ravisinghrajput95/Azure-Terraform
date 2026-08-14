@@ -123,7 +123,7 @@ run them concurrently:
 ### Phase 0 — Bootstrap (once per subscription, outside this codebase)
 
 The backend cannot live in the state it stores. It is created and managed by
-[`bootstrap/`](../../bootstrap/README.md), which runs on **local state** and was
+[`bootstrap/`](../bootstrap/README.md), which runs on **local state** and was
 imported on 2026-08-14 — the resources predate the code, so it was adopted with
 `terraform import`, not `apply`. Its plan is clean.
 
