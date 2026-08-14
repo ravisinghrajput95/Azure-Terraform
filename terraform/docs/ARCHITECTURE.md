@@ -73,6 +73,20 @@ The `diagnostics` module takes a resource ID and a workspace ID, reads
 `enabled_log` / `metric` blocks dynamically. Every other module calls it. That
 is how "no duplicate code" is actually achieved for the cross-cutting concern.
 
+**Collecting every category is the right default and has exactly one exception
+here, which cost real data before it was found.** On AKS the discovered set
+includes `kube-audit`, which records every API server call. Measured on
+2026-08-14, the two audit categories were **995 MB/day against dev's 512 MB/day
+cap** — 97% of the environment's whole ingestion budget, and twice the cap on
+their own. dev was hitting the cap daily and silently dropping everything that
+arrived afterwards.
+
+The lesson is not that dynamic discovery was wrong. It is that "enable
+everything the resource offers" is a volume decision as well as a coverage
+decision, and on a capped workspace those conflict. The module already supported
+`log_selection = "explicit"` with `excluded_log_categories`; dev now uses it,
+and the security cost is recorded in SECURITY.md rather than absorbed quietly.
+
 ### 1.5 Entra ID-only authentication for SQL — no password to protect
 
 The brief says "no hardcoded secrets." The stronger position is **no secret at

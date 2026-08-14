@@ -162,7 +162,14 @@ consequence of the design in ARCHITECTURE.md §1.4: the `diagnostics` module
 reads `azurerm_monitor_diagnostic_categories` and enables **every** category the
 resource offers. That is the right default for most resources and the wrong one
 for AKS, where `kube-audit` records every API server call and will exhaust a
-0.5 GB cap on its own. Not yet fixed — see "Not covered".
+0.5 GB cap on its own.
+
+**Fixed on 2026-08-14**: dev's AKS diagnostic setting now uses
+`log_selection = "explicit"` with both audit categories excluded, leaving
+~33.5 MB/day of diagnostics (~6.5% of cap). The security cost of dropping API
+audit logging is recorded in SECURITY.md. The effect on ingestion could not be
+measured the same day — the workspace was already over quota, so nothing was
+flowing until the next reset.
 
 ### The documented query does not work, and fails silently
 
@@ -447,12 +454,6 @@ over variables — so it stays statically known and survives a cold apply.
 
 Out of scope by decision, not oversight:
 
-- **Excluding `kube-audit` from the AKS diagnostic setting** — it is ~90% of
-  dev's ingestion and single-handedly exhausts the 0.5 GB/day cap, but the
-  `diagnostics` module enables every category a resource offers by design
-  (ARCHITECTURE.md §1.4). Narrowing it is a change to that module's contract,
-  not to this one, and audit logs are a security signal — dropping them is a
-  decision, not a cleanup.
 
 - **Data tier** — SQL, Redis, Storage, Key Vault availability and throttling.
 - **Subscription budget** — free, and directly relevant to a credit-limited

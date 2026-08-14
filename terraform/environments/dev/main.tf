@@ -845,6 +845,17 @@ module "diagnostics_aks" {
 
   target_resource_id         = module.aks.id
   log_analytics_workspace_id = module.log_analytics.id
+
+  # The one resource in this environment where collecting every category is the
+  # wrong default. AKS audit logging alone is 995 MB/day against a 512 MB cap —
+  # see the variable's description for the measurements.
+  #
+  # "explicit" is required for exclusions, since a category group cannot be
+  # partially excluded. It also means a new high-volume category Azure adds
+  # later shows up in a plan before it reaches the bill, rather than being
+  # collected silently the moment it appears.
+  log_selection           = "explicit"
+  excluded_log_categories = var.aks_excluded_log_categories
 }
 
 ################################################################################

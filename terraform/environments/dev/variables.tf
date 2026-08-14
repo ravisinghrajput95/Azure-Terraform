@@ -167,3 +167,34 @@ variable "log_analytics_daily_cap_reset_hour_utc" {
     error_message = "Must be an hour from 0 to 23."
   }
 }
+
+variable "aks_excluded_log_categories" {
+  description = <<-EOT
+    AKS diagnostic log categories NOT collected in this environment.
+
+    This is a deliberate security trade made for a capped dev workspace, not a
+    cleanup. Measured over 24h on 2026-08-14, against a 512 MB/day cap:
+
+      kube-audit                627.36 MB   61.0%
+      kube-audit-admin          368.00 MB   35.8%
+      everything else            33.53 MB    3.3%
+      TOTAL                    1028.89 MB   = 201% of cap
+
+    The workspace was hitting its cap daily and dropping whatever arrived
+    after, which is unrecoverable and blinds every alert rule at the same time.
+
+    Excluding only `kube-audit` leaves 401 MB/day, or 78.4% of the cap —
+    permanently pressed against the 80% warning threshold. An alert that fires
+    constantly is as useless as one that never fires, so that is not a fix.
+    Excluding both leaves ~6.5% and real headroom.
+
+    WHAT IS LOST: Kubernetes API server audit logging. `kube-audit-admin` is
+    the reduced form (non-get/list operations) and is the one worth restoring
+    first if the cap is ever raised. Recorded in SECURITY.md.
+
+    Environments with an uncapped workspace should pass [] and collect
+    everything — profile forces log_daily_quota_gb = -1 outside dev.
+  EOT
+  type        = list(string)
+  default     = ["kube-audit", "kube-audit-admin"]
+}

@@ -65,6 +65,7 @@ stated reason.
 | AKS API server **public** in dev, IP-restricted | A private cluster puts `kubectl` inside the VNet only. The allowlist holds the operator address and the NAT Gateway egress address. | `aks` |
 | Cluster-admin granted to a **user**, not a group | Confirmed 2026-08-14: this tenant contains **zero** Entra groups, so there is nothing to grant to. The grant is a scoped, auditable Azure RBAC role assignment at cluster scope. A governance weakness anywhere with a real directory. | `terraform.tfvars` |
 | No egress filtering or inspection | Azure Firewall is ~$900/month against a $200 credit, so the `firewall` module was never written and egress is an unfiltered NAT Gateway. A compromised pod can reach any internet address. See ARCHITECTURE.md §6c. | not built |
+| **Kubernetes API audit logging OFF in dev** | `kube-audit` and `kube-audit-admin` are 995 MB/day against a 512 MB/day cap — 97% of dev's entire ingestion budget, twice over. The workspace was hitting the cap daily and dropping everything that arrived after, which is unrecoverable and blinds every alert rule at once. Excluding only `kube-audit` leaves 78.4% of cap, permanently against the 80% warning line. Measured 2026-08-14, not estimated. **Restore `kube-audit-admin` first** if the cap is ever raised — it is the non-get/list subset and carries most of the security value at a third of the volume. | `dev` root |
 
 ### Closed
 
