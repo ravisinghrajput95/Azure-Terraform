@@ -41,19 +41,20 @@ cd bootstrap
 terraform init
 export SUB=$(az account show --query id -o tsv)
 
-# The account name is NOT committed — it is a public DNS label, so it lives in
-# the gitignored terraform.tfvars rather than in a default. Terraform loads
-# that file automatically; a fresh clone without it fails with "No value for
-# required variable". See terraform.tfvars.example.
+# Neither the account name nor the resource group is committed — both are live
+# identifiers, so they live in the gitignored terraform.tfvars rather than in
+# defaults. Terraform loads that file automatically; a fresh clone without it
+# fails with "No value for required variable". See terraform.tfvars.example.
 export ACCOUNT=$(terraform console <<< "var.storage_account_name" | tr -d '"')
+export RG=$(terraform console <<< "var.resource_group_name" | tr -d '"')
 
 terraform import -var="subscription_id=$SUB" \
   azurerm_resource_group.tfstate \
-  "/subscriptions/$SUB/resourceGroups/REDACTED-STATE-RG"
+  "/subscriptions/$SUB/resourceGroups/$RG"
 
 terraform import -var="subscription_id=$SUB" \
   azurerm_storage_account.tfstate \
-  "/subscriptions/$SUB/resourceGroups/REDACTED-STATE-RG/providers/Microsoft.Storage/storageAccounts/$ACCOUNT"
+  "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/$ACCOUNT"
 
 # qa and stage did not exist and were CREATED by the apply, not imported.
 for env in dev prod; do

@@ -8,9 +8,26 @@ variable "subscription_id" {
 }
 
 variable "resource_group_name" {
-  description = "Resource group holding the state account. Deliberately separate from every workload resource group so that destroying an environment cannot reach its own state."
+  description = <<-EOT
+    Resource group holding the state account. Deliberately separate from every
+    workload resource group so that destroying an environment cannot reach its
+    own state.
+
+    NO DEFAULT, for the same reason as `storage_account_name`: it is a live
+    identifier for this deployment and does not belong in a public repository.
+    Lower risk than the account name — a resource group name is not globally
+    unique and resolves nothing — but it names the scope every state role
+    assignment is made against, so it is a useful hint and no use to anyone
+    reading the code.
+
+    Supply it in `terraform.tfvars`, which is gitignored.
+  EOT
   type        = string
-  default     = "REDACTED-STATE-RG"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9._()-]{1,90}$", var.resource_group_name))
+    error_message = "Resource group names are 1-90 characters: letters, digits, and . _ ( ) -"
+  }
 }
 
 variable "location" {

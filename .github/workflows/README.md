@@ -60,7 +60,7 @@ az role assignment create --assignee "$OBJECT_ID" \
 #    so a data-plane role is required — Reader on the subscription does NOT
 #    grant it.
 STATE_SA_ID=$(az storage account show \
-  -n <state-storage-account> -g REDACTED-STATE-RG --query id -o tsv)
+  -n <state-storage-account> -g <state-resource-group> --query id -o tsv)
 az role assignment create --assignee "$OBJECT_ID" \
   --role "Storage Blob Data Contributor" --scope "$STATE_SA_ID"
 
@@ -79,7 +79,7 @@ are identifiers, not secrets — a client ID is public information under OIDC.
 | `AZURE_CLIENT_ID` | App registration client ID |
 | `AZURE_TENANT_ID` | Entra tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | Target subscription |
-| `TFSTATE_RESOURCE_GROUP` | `REDACTED-STATE-RG` |
+| `TFSTATE_RESOURCE_GROUP` | Resource group holding the state account |
 | `TFSTATE_STORAGE_ACCOUNT` | State storage account name |
 
 **Secrets**

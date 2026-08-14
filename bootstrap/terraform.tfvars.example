@@ -1,10 +1,16 @@
-# The state account name is deliberately NOT committed: a storage account name
-# is a public DNS label, so publishing it in a public repository advertises the
-# exact endpoint holding every environment's Terraform state.
+# Neither of these is committed. Both are live identifiers for a specific
+# deployment, and this is a public repository.
 #
-# Access remains RBAC-gated and shared keys are disabled, so the name alone
+# The account name matters most: it is a public DNS label, so
+# <name>.blob.core.windows.net resolves for anyone and publishing it
+# advertises the exact endpoint holding every environment's Terraform state.
+# Access is still RBAC-gated and shared keys are disabled, so the name alone
 # grants nothing — it is an unnecessary disclosure, not a breach.
+#
+# The resource group is lower risk — not globally unique, resolves nothing —
+# but it names the scope every state role assignment is made against.
 storage_account_name = "<globally-unique-state-account-name>"
+resource_group_name  = "<state-resource-group>"
 
 # Supplied at the command line in the import commands, or set it here.
 # subscription_id = "<subscription-guid>"
