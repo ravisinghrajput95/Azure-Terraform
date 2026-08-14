@@ -62,7 +62,8 @@ flowchart TB
                     PEST["PE: Storage"]
                 end
 
-                RESV["Reserved, never allocated:<br/>AzureFirewallSubnet, snet-agw,<br/>snet-app, snet-biz, snet-db, snet-mgmt"]
+                EMPTY["snet-app /22, snet-biz /22,<br/>snet-db /24, snet-mgmt /24<br/>ALLOCATED with NSGs and NAT,<br/>and permanently EMPTY —<br/>the tier subnets AKS replaced"]
+                RESV["Reserved, never allocated:<br/>AzureFirewallSubnet 10.10.0.0/26,<br/>AzureFirewallManagementSubnet 10.10.0.64/26,<br/>GatewaySubnet 10.10.0.192/26,<br/>snet-agw 10.10.1.0/24"]
             end
             PDNS["Private DNS zones<br/>4 zones, linked to the VNet"]
         end

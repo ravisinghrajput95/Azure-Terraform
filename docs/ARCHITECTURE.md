@@ -323,7 +323,8 @@ flowchart TB
                     PEST["PE: Storage"]
                 end
 
-                RESV["Reserved, never allocated:<br/>AzureFirewallSubnet, snet-agw,<br/>snet-app, snet-biz, snet-db, snet-mgmt"]
+                EMPTY["snet-app /22, snet-biz /22,<br/>snet-db /24, snet-mgmt /24<br/>ALLOCATED with NSGs and NAT,<br/>and permanently EMPTY —<br/>the tier subnets AKS replaced"]
+                RESV["Reserved, never allocated:<br/>AzureFirewallSubnet 10.10.0.0/26,<br/>AzureFirewallManagementSubnet 10.10.0.64/26,<br/>GatewaySubnet 10.10.0.192/26,<br/>snet-agw 10.10.1.0/24"]
             end
             PDNS["Private DNS zones<br/>4 zones, linked to the VNet"]
         end
@@ -377,9 +378,17 @@ flowchart TB
 | Two VM Scale Sets in separate subnets, NSG between them | **One AKS cluster, tiers as namespaces** | The tier boundary moved from the network into the cluster (§6b) |
 | 3 nodes across 3 zones | **1 node, 0 zones** | 3 nodes is 6 vCPU; the quota is 4 (§6b) |
 
-And one that is not visible in any diagram: the single node ran at **96% of
-allocatable CPU from addons alone**, with two addon pods `Pending` since build.
-dev could run the platform; it could not have run a workload on it.
+Two things the diagram cannot show. The single node ran at **96% of allocatable
+CPU from addons alone**, with two addon pods `Pending` since build — dev could
+run the platform, and could not have run a workload on it. And `kube-audit` was
+excluded from the AKS diagnostic setting, so the cluster's API audit trail is
+the one signal the arrows into Log Analytics do **not** carry.
+
+Note also what the tier subnets were doing: `snet-app`, `snet-biz`, `snet-db`
+and `snet-mgmt` were all **allocated**, given NSGs and NAT Gateway
+associations, and left permanently empty. They are the three-tier design AKS
+replaced (§6b), held open at their planned CIDRs so the boundary could move
+back to the network without renumbering.
 
 ---
 
