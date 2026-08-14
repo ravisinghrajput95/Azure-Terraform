@@ -159,3 +159,99 @@ resource "azurerm_monitor_metric_alert" "this" {
     }
   }
 }
+
+################################################################################
+# Log Analytics daily cap alert
+#
+# Hitting the daily cap stops ingestion for the remainder of the UTC day. The
+# dropped telemetry is unrecoverable: raising the cap afterwards does not
+# backfill it. Every metric alert above goes blind at the same moment, so this
+# rule is the one that reports the others having stopped working.
+#
+# for_each is over a statically-known boolean, never over the workspace ID.
+# Deriving it from an attribute of the log-analytics module would work on an
+# incremental apply and fail on a cold one.
+################################################################################
+
+resource "azurerm_monitor_scheduled_query_rules_alert_v2" "daily_cap" {
+  for_each = var.enable_daily_cap_alert ? toset(["daily-cap"]) : toset([])
+
+  name                = "${var.alert_name_prefix}-${each.key}"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+
+  scopes      = [var.log_analytics_workspace_id]
+  severity    = var.daily_cap_alert_severity
+  description = "Log Analytics workspace hit its daily ingestion cap. Collection has STOPPED until the cap resets, and the data dropped in the meantime is unrecoverable. Every metric alert in this action group is blind until then."
+
+  evaluation_frequency = var.daily_cap_alert_evaluation_frequency
+  window_duration      = var.daily_cap_alert_window_duration
+
+  # The OverQuota row appears ONCE per cap hit. Requiring more than one failing
+  # period would wait for a repeat that never comes, so both are pinned to 1
+  # rather than exposed — a caller raising them would silence the rule without
+  # any indication it had been silenced.
+  criteria {
+    query                   = local.daily_cap_query
+    time_aggregation_method = "Count"
+    operator                = "GreaterThan"
+    threshold               = 0
+
+    failing_periods {
+      number_of_evaluation_periods             = 1
+      minimum_failing_periods_to_trigger_alert = 1
+    }
+  }
+
+  # Left FALSE deliberately. Auto-mitigation resolves the alert once the query
+  # stops matching, which happens when the OverQuota row ages out of the window
+  # — typically within the hour. The cap itself is still in force until the
+  # daily reset, so an auto-resolved alert would signal "recovered" while data
+  # is still being dropped. The alert stays open until a human closes it.
+  auto_mitigation_enabled = false
+
+  # One cap hit is matched by several consecutive evaluations, because the
+  # window is longer than the frequency by design. Without muting, that is a
+  # stream of identical notifications.
+  mute_actions_after_alert_duration = var.daily_cap_alert_mute_duration
+
+  # Left FALSE deliberately: Azure validates the query against the workspace at
+  # create time, so a query naming a table that does not exist fails the apply
+  # instead of deploying a rule that can never match.
+  skip_query_validation = false
+
+  action {
+    action_groups = [azurerm_monitor_action_group.this.id]
+  }
+
+  tags = var.tags
+
+  lifecycle {
+    precondition {
+      condition = !local.daily_cap_alert_without_cap
+      error_message = join(" ", [
+        "enable_daily_cap_alert is true but log_analytics_daily_quota_gb is ${var.log_analytics_daily_quota_gb}, which means the workspace is UNCAPPED.",
+        "An uncapped workspace never stops ingesting, so it never emits the OverQuota record this rule matches.",
+        "Azure creates the rule, validates the query successfully, displays it as healthy, and it never fires.",
+        "Either set a daily cap on the workspace, or set enable_daily_cap_alert = false rather than deploying a rule that cannot work."
+      ])
+    }
+
+    precondition {
+      condition = !local.daily_cap_alert_without_workspace
+      error_message = join(" ", [
+        "enable_daily_cap_alert is true but log_analytics_workspace_id is null or empty.",
+        "Pass the workspace's full ARM resource ID — the log-analytics module's `id` output, not `workspace_id`, which is the customer GUID and is not a valid alert scope."
+      ])
+    }
+
+    precondition {
+      condition = !local.daily_cap_window_shorter_than_frequency
+      error_message = join(" ", [
+        "daily_cap_alert_window_duration (${var.daily_cap_alert_window_duration}) is shorter than daily_cap_alert_evaluation_frequency (${var.daily_cap_alert_evaluation_frequency}).",
+        "Azure rejects this, and its error names neither value.",
+        "The window should be comfortably LONGER than the frequency here: the OverQuota row is written once, and ingestion latency sits between the moment the cap is hit and the moment the row becomes queryable."
+      ])
+    }
+  }
+}

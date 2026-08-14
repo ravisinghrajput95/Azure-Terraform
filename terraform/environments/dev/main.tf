@@ -893,6 +893,19 @@ module "monitor" {
   threshold_overrides = {
     pods-pending = 3
   }
+
+  # dev caps ingestion at 0.5 GB/day. Hitting the cap stops collection for the
+  # rest of the UTC day and the dropped data is unrecoverable — which also
+  # blinds every rule above, since the metrics they watch stop arriving.
+  #
+  # The flag is derived from the cap rather than from the environment name, so
+  # the alert exists exactly where there is a cap to hit. profile's production
+  # guardrail forces log_daily_quota_gb = -1 outside dev, so this is false
+  # everywhere else without the monitor module ever learning which environment
+  # it is in.
+  enable_daily_cap_alert       = module.profile.profile.log_daily_quota_gb > 0
+  log_analytics_daily_quota_gb = module.profile.profile.log_daily_quota_gb
+  log_analytics_workspace_id   = module.log_analytics.id
 }
 
 ################################################################################

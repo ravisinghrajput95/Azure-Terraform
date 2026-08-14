@@ -66,7 +66,32 @@ output "coverage_summary" {
     local.all_alerts_disabled ? "WARNING: every alert rule is disabled — this stack observes nothing." : "",
     !var.action_group_enabled ? "WARNING: the action group is disabled — rules fire but no notification is delivered." : "",
     length(local.disabled_alerts) > 0 && !local.all_alerts_disabled ? "Disabled: ${join(", ", local.disabled_alerts)}." : "",
+    var.enable_daily_cap_alert ? "Daily-cap alert watching a ${var.log_analytics_daily_quota_gb} GB/day cap." : "WARNING: no daily-cap alert. If the workspace caps ingestion, collection stops silently and every rule above goes blind until the cap resets.",
   ]))
+}
+
+################################################################################
+# Daily cap alert
+################################################################################
+
+output "daily_cap_alert_id" {
+  description = "Resource ID of the daily-cap log search alert, or null when it is not deployed."
+  value       = try(azurerm_monitor_scheduled_query_rules_alert_v2.daily_cap["daily-cap"].id, null)
+}
+
+output "daily_cap_alert_query" {
+  description = "The KQL the daily-cap rule evaluates. Exported so it can be run by hand against the workspace to confirm it matches, which is the only way to know the rule would fire. Note it deliberately does NOT filter on the Operation column — see locals.tf."
+  value       = var.enable_daily_cap_alert ? local.daily_cap_query : null
+}
+
+output "daily_cap_alert_is_deployed" {
+  description = "Whether the daily-cap rule exists. False means a workspace that caps ingestion can stop collecting with no notification at all."
+  value       = var.enable_daily_cap_alert
+}
+
+output "daily_cap_alert_has_ever_fired" {
+  description = "Deliberately absent as a value, present as a reminder: Terraform cannot know this. A deployed rule that has never fired is indistinguishable from one that cannot fire. Confirm by running daily_cap_alert_query against the workspace."
+  value       = "unknown — Terraform cannot observe alert history; run daily_cap_alert_query against the workspace to confirm the rule matches"
 }
 
 ################################################################################

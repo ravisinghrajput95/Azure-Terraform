@@ -233,6 +233,108 @@ variable "cluster_autoscaler_enabled" {
 }
 
 ################################################################################
+# Log Analytics daily cap alert
+#
+# A capability flag and its inputs, not an environment branch. The module never
+# learns which environment it is in.
+#
+# When a workspace hits its daily ingestion cap, collection STOPS for the rest
+# of the UTC day and the dropped telemetry is gone — it is not queued, not
+# backfilled, and not recoverable by raising the cap afterwards. Every other
+# alert rule in this module goes blind at the same moment, because the metrics
+# they watch stop arriving.
+################################################################################
+
+variable "enable_daily_cap_alert" {
+  description = <<-EOT
+    Whether to deploy the Log Analytics daily-cap alert.
+
+    A capability flag. Environments that do not cap ingestion do not need it,
+    and deploying it there produces a rule that can never fire — see
+    `log_analytics_daily_quota_gb`.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "log_analytics_workspace_id" {
+  description = "Full ARM resource ID of the workspace to watch. Required when enable_daily_cap_alert is true. This is the scope the log query runs against."
+  type        = string
+  default     = null
+}
+
+variable "log_analytics_daily_quota_gb" {
+  description = <<-EOT
+    The workspace's configured daily cap in GB, or -1 when uncapped.
+
+    Passed in rather than read from the workspace so that the precondition can
+    evaluate at PLAN time. An uncapped workspace never emits the OverQuota
+    event, so the rule would be created, display as healthy, and never fire.
+  EOT
+  type        = number
+  default     = -1
+}
+
+variable "daily_cap_alert_severity" {
+  description = "Severity for the daily-cap rule. Defaults to 1 (Error): the data is already being dropped by the time this fires, and every other rule in this module is blind until the cap resets."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.daily_cap_alert_severity >= 0 && var.daily_cap_alert_severity <= 4
+    error_message = "Severity must be between 0 (Critical) and 4 (Verbose)."
+  }
+}
+
+variable "daily_cap_alert_evaluation_frequency" {
+  description = "How often the log query runs, ISO 8601. Log search alerts bill per rule, and more frequent evaluation costs more."
+  type        = string
+  default     = "PT15M"
+
+  validation {
+    condition     = contains(["PT5M", "PT10M", "PT15M", "PT30M", "PT1H"], var.daily_cap_alert_evaluation_frequency)
+    error_message = "daily_cap_alert_evaluation_frequency must be one of PT5M, PT10M, PT15M, PT30M, PT1H."
+  }
+}
+
+variable "daily_cap_alert_window_duration" {
+  description = <<-EOT
+    Lookback window each evaluation considers, ISO 8601.
+
+    Deliberately LONGER than the evaluation frequency. The OverQuota record
+    appears once, and its TimeGenerated is when the cap was hit, not when the
+    row became queryable — ingestion latency sits between the two. A window
+    equal to the frequency can step past a late-arriving row and miss the only
+    notification there will be that day.
+  EOT
+  type        = string
+  default     = "PT1H"
+
+  validation {
+    condition     = contains(["PT15M", "PT30M", "PT1H", "PT6H", "PT12H", "P1D", "P2D"], var.daily_cap_alert_window_duration)
+    error_message = "daily_cap_alert_window_duration must be one of PT15M, PT30M, PT1H, PT6H, PT12H, P1D, P2D. Azure caps the window at 2 days."
+  }
+}
+
+variable "daily_cap_alert_mute_duration" {
+  description = <<-EOT
+    How long to suppress repeat notifications after the rule fires, ISO 8601.
+
+    A window longer than the evaluation frequency means the same OverQuota row
+    is matched by several consecutive evaluations. Without muting, one cap hit
+    produces a stream of identical alerts until the row falls out of the window.
+    The cap resets once per UTC day, so muting for hours loses nothing.
+  EOT
+  type        = string
+  default     = "PT6H"
+
+  validation {
+    condition     = contains(["PT5M", "PT10M", "PT15M", "PT30M", "PT1H", "PT6H", "PT12H", "P1D"], var.daily_cap_alert_mute_duration)
+    error_message = "daily_cap_alert_mute_duration must be one of PT5M, PT10M, PT15M, PT30M, PT1H, PT6H, PT12H, P1D."
+  }
+}
+
+################################################################################
 # Rule defaults
 ################################################################################
 

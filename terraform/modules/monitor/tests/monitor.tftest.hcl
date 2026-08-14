@@ -361,3 +361,148 @@ run "rejects_a_threshold_override_for_a_rule_that_does_not_exist" {
 
   expect_failures = [azurerm_monitor_metric_alert.this]
 }
+
+################################################################################
+# Log Analytics daily cap alert
+#
+# The rule is off by default, so the first test proves it stays off rather than
+# appearing by accident, and the rest prove the guards around switching it on.
+#
+# Every failure below is silent in Azure: the rule is created, its query passes
+# validation, the portal shows it enabled and healthy, and it never fires.
+################################################################################
+
+run "does_not_deploy_the_daily_cap_alert_by_default" {
+  command = plan
+
+  assert {
+    condition     = output.daily_cap_alert_is_deployed == false
+    error_message = "The daily-cap alert must be opt-in. A workspace with no cap does not need it."
+  }
+
+  assert {
+    condition     = output.daily_cap_alert_id == null
+    error_message = "No rule should exist when the capability flag is off."
+  }
+}
+
+run "warns_in_the_summary_when_no_daily_cap_alert_is_deployed" {
+  command = plan
+
+  assert {
+    condition     = strcontains(output.coverage_summary, "no daily-cap alert")
+    error_message = "Coverage summary must state that ingestion can stop silently when the cap alert is absent."
+  }
+}
+
+run "accepts_the_daily_cap_alert_on_a_capped_workspace" {
+  command = plan
+
+  variables {
+    enable_daily_cap_alert       = true
+    log_analytics_daily_quota_gb = 0.5
+    log_analytics_workspace_id   = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+  }
+
+  assert {
+    condition     = output.daily_cap_alert_is_deployed == true
+    error_message = "A capped workspace with the flag on should deploy the rule."
+  }
+
+  assert {
+    condition     = strcontains(output.coverage_summary, "0.5 GB/day")
+    error_message = "Coverage summary should state the cap being watched."
+  }
+}
+
+# The single most important guard in this section. An uncapped workspace never
+# stops ingesting, so it never emits the record the query matches.
+run "rejects_the_daily_cap_alert_on_an_uncapped_workspace" {
+  command = plan
+
+  variables {
+    enable_daily_cap_alert       = true
+    log_analytics_daily_quota_gb = -1
+    log_analytics_workspace_id   = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+  }
+
+  expect_failures = [azurerm_monitor_scheduled_query_rules_alert_v2.daily_cap]
+}
+
+run "rejects_the_daily_cap_alert_with_no_workspace_id" {
+  command = plan
+
+  variables {
+    enable_daily_cap_alert       = true
+    log_analytics_daily_quota_gb = 0.5
+    log_analytics_workspace_id   = null
+  }
+
+  expect_failures = [azurerm_monitor_scheduled_query_rules_alert_v2.daily_cap]
+}
+
+run "rejects_a_daily_cap_window_shorter_than_its_frequency" {
+  command = plan
+
+  variables {
+    enable_daily_cap_alert               = true
+    log_analytics_daily_quota_gb         = 0.5
+    log_analytics_workspace_id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+    daily_cap_alert_evaluation_frequency = "PT1H"
+    daily_cap_alert_window_duration      = "PT15M"
+  }
+
+  expect_failures = [azurerm_monitor_scheduled_query_rules_alert_v2.daily_cap]
+}
+
+# Regression guard. Microsoft's documented query filters on Operation, which
+# holds a GUID on this platform's workspace and therefore matches nothing. A
+# rule built that way deploys cleanly and never fires. If someone "corrects"
+# the query back to the documented form, this test fails.
+run "daily_cap_query_does_not_filter_on_the_operation_column" {
+  command = plan
+
+  variables {
+    enable_daily_cap_alert       = true
+    log_analytics_daily_quota_gb = 0.5
+    log_analytics_workspace_id   = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+  }
+
+  # Matches the FILTER, not the table name — "_LogOperation" legitimately
+  # contains "Operation".
+  assert {
+    condition     = !strcontains(output.daily_cap_alert_query, "where Operation")
+    error_message = "The query must not filter on the Operation column. It holds a GUID, not \"Data collection Status\", so the documented query matches nothing and the rule never fires."
+  }
+
+  assert {
+    condition     = !strcontains(output.daily_cap_alert_query, "Data collection Status")
+    error_message = "The query must not use the documented \"Data collection Status\" value. Verified against the live workspace: it matches zero rows on a day the cap was genuinely hit."
+  }
+
+  assert {
+    condition     = strcontains(output.daily_cap_alert_query, "OverQuota")
+    error_message = "The query must match the OverQuota detail string, which is what the workspace actually emits."
+  }
+
+  assert {
+    condition     = strcontains(output.daily_cap_alert_query, "_LogOperation")
+    error_message = "The query must read _LogOperation."
+  }
+}
+
+run "counts_the_daily_cap_alert_in_indicative_cost" {
+  command = plan
+
+  variables {
+    enable_daily_cap_alert       = true
+    log_analytics_daily_quota_gb = 0.5
+    log_analytics_workspace_id   = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+  }
+
+  # 8 metric alerts at 0.10 plus one log search alert at 0.50.
+  assert {
+    condition     = output.indicative_monthly_cost_usd == 1.3
+    error_message = "Log search alerts are priced per rule, separately from metric alerts, and must be counted."
+  }
+}

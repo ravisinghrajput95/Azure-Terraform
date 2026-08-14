@@ -217,15 +217,20 @@ locals {
     if !contains(keys(var.metric_alerts), k)
   ])
 
+  # Every duration accepted by any variable in this module must appear here.
+  # lookup() falls back to 0 for a missing key, which would make the window
+  # comparisons below silently pass rather than fail.
   duration_minutes = {
     PT1M  = 1
     PT5M  = 5
+    PT10M = 10
     PT15M = 15
     PT30M = 30
     PT1H  = 60
     PT6H  = 360
     PT12H = 720
     P1D   = 1440
+    P2D   = 2880
   }
 
   # Azure rejects a window shorter than the evaluation frequency, but names
@@ -246,8 +251,74 @@ locals {
   # dimension filter is one series; splitting by a dimension multiplies it by
   # the number of values that dimension takes. This counts rules, so it is a
   # floor rather than an estimate wherever dimensions are used.
+  #
+  # The log search alert is priced differently again — per rule, per evaluation
+  # frequency — so it is added as a separate term rather than folded in.
   ##############################################################################
   enabled_alert_count = length(local.enabled_alerts)
 
-  indicative_monthly_cost_usd = local.enabled_alert_count * 0.10
+  indicative_monthly_cost_usd = (local.enabled_alert_count * 0.10) + (var.enable_daily_cap_alert ? 0.50 : 0)
+}
+
+################################################################################
+# Log Analytics daily cap alert
+#
+# THE QUERY IS NOT THE ONE MICROSOFT DOCUMENTS, AND THAT IS DELIBERATE.
+#
+# The documented form filters on the Operation column:
+#
+#   _LogOperation
+#   | where Category =~ "Ingestion"
+#   | where Operation =~ "Data collection Status"   <-- matches NOTHING here
+#   | where Detail contains "OverQuota"
+#
+# On this platform's workspace the Operation column holds a GUID, not that
+# string. Verified against the live workspace on 2026-08-14, on a day the cap
+# had genuinely been hit:
+#
+#   Category  Operation                             Detail
+#   Ingestion 995abe77-99ad-4625-9b17-10f3023cc330  "Data collection stopped due
+#                                                    to daily limit of free data
+#                                                    reached. Ingestion status =
+#                                                    OverQuota"
+#
+# The documented query returned 0 rows against that same record; the query
+# below returned 1. A rule built on the documented form is accepted by Azure,
+# passes query validation because the syntax is valid and the table exists,
+# displays as healthy, and never fires — while the workspace silently drops
+# data. This is the exact failure mode this module exists to prevent, and it is
+# why the query is fixed in the module rather than exposed as a variable for a
+# caller to "correct" back to the documented version.
+#
+# Filtering is on Category and Detail only. Level is not filtered: it carries
+# "Warning" today, and narrowing on it buys nothing while adding one more
+# column whose values can change.
+################################################################################
+
+locals {
+  daily_cap_query = <<-KQL
+    _LogOperation
+    | where Category =~ "Ingestion"
+    | where Detail has "OverQuota"
+  KQL
+
+  # A workspace with no cap cannot emit the event this rule matches, so the
+  # rule is created, validates, displays as healthy and never fires. -1 is the
+  # uncapped sentinel; 0 and negatives other than -1 are not valid caps either.
+  workspace_is_uncapped = var.log_analytics_daily_quota_gb <= 0
+
+  daily_cap_alert_without_cap = var.enable_daily_cap_alert && local.workspace_is_uncapped
+
+  # The rule needs something to scope to. Null here fails at apply with an
+  # error naming the API path rather than the variable.
+  daily_cap_alert_without_workspace = var.enable_daily_cap_alert && (
+    var.log_analytics_workspace_id == null || var.log_analytics_workspace_id == ""
+  )
+
+  # Azure rejects a window shorter than the evaluation frequency. It is also a
+  # correctness problem here specifically: see the window variable's docs.
+  daily_cap_window_shorter_than_frequency = var.enable_daily_cap_alert && (
+    lookup(local.duration_minutes, var.daily_cap_alert_window_duration, 0) <
+    lookup(local.duration_minutes, var.daily_cap_alert_evaluation_frequency, 0)
+  )
 }

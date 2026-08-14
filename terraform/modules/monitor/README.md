@@ -125,6 +125,105 @@ not on this module.
 
 ---
 
+## The Log Analytics daily cap alert
+
+A ninth rule, off by default, and the only log search alert here — the other
+eight are metric alerts.
+
+**Why it matters more than its severity suggests.** When a workspace hits its
+daily ingestion cap, collection stops for the remainder of the UTC day. The
+dropped telemetry is not queued, not backfilled, and not recovered by raising
+the cap afterwards — it is simply gone. Every metric alert above goes blind at
+the same moment, because the metrics they watch stop arriving. A capped
+workspace that hits its cap therefore disables this entire module silently, and
+this is the rule that says so.
+
+dev caps at **0.5 GB/day**. The cap has been hit at least once already, on
+2026-08-13, and nothing reported it.
+
+### The documented query does not work, and fails silently
+
+Microsoft's guidance filters on the `Operation` column:
+
+```kusto
+_LogOperation
+| where Category =~ "Ingestion"
+| where Operation =~ "Data collection Status"   // matches NOTHING here
+| where Detail contains "OverQuota"
+```
+
+On this platform's workspace `Operation` holds a **GUID**, not that string.
+Verified against the live workspace on a day the cap had genuinely been hit:
+
+```
+Category   Operation                              Detail
+Ingestion  995abe77-99ad-4625-9b17-10f3023cc330   "Data collection stopped due to
+                                                   daily limit of free data reached.
+                                                   Ingestion status = OverQuota"
+```
+
+Both queries were run against that record, constrained to the rule's one-hour
+window:
+
+| Query | Rows matched | Would fire |
+|---|---|---|
+| Documented, filtering `Operation` | **0** | no |
+| This module's, filtering `Category` + `Detail` | **1** | **yes** |
+
+A rule built the documented way is accepted by Azure, **passes query
+validation** — the syntax is valid and the table exists — displays as enabled
+and healthy, and never fires while the workspace silently drops data.
+
+That is why the query is fixed in `locals.tf` rather than exposed as an input,
+and why a test asserts it never filters on `Operation`. There is no error to
+find later.
+
+### Four settings that are deliberate, not defaults
+
+| Setting | Value | Why |
+|---|---|---|
+| `auto_mitigation_enabled` | `false` | Auto-resolve fires when the row ages out of the window, roughly an hour later. The cap is still in force until the daily reset, so resolving would signal "recovered" while data is still being dropped. |
+| `window_duration` | `PT1H` vs `PT15M` frequency | The OverQuota row is written once. Its `TimeGenerated` is when the cap was hit, not when the row became queryable — ingestion latency sits between them, and a window equal to the frequency can step past a late-arriving row and miss the only notification there will be that day. |
+| `mute_actions_after_alert_duration` | `PT6H` | The consequence of the above: one cap hit is matched by several consecutive evaluations. Without muting that is a stream of identical alerts. The cap resets daily, so muting for hours loses nothing. |
+| `failing_periods` | `1` of `1`, not exposed | The row appears once. Requiring more failing periods waits for a repeat that never comes, and would silence the rule with no indication it had been silenced. |
+
+`skip_query_validation` is left `false` so that a query naming a table that does
+not exist fails the apply rather than deploying a rule that cannot match.
+
+### The precondition that matters
+
+An **uncapped** workspace never stops ingesting, so it never emits the record
+this query matches. The rule would be created, validate, display as healthy and
+never fire. `log_analytics_daily_quota_gb` is therefore passed in — so the check
+runs at plan time — and `-1` with the alert enabled is rejected outright.
+
+In this platform the flag is derived from the cap itself:
+
+```hcl
+enable_daily_cap_alert       = module.profile.profile.log_daily_quota_gb > 0
+log_analytics_daily_quota_gb = module.profile.profile.log_daily_quota_gb
+log_analytics_workspace_id   = module.log_analytics.id
+```
+
+The alert exists exactly where there is a cap to hit. `profile`'s production
+guardrail forces `log_daily_quota_gb = -1` outside dev, so this is `false`
+everywhere else **without the monitor module ever learning which environment it
+is in**.
+
+### What is verified, and what is not
+
+- **Verified:** the query matches a real OverQuota record, and would have fired
+  on the actual cap hit. The documented query would not have.
+- **Verified:** the rule is deployed, enabled, severity 1, scoped to the
+  workspace, with the query as written.
+- **NOT verified:** the rule has never fired, so notification delivery is
+  untested end to end. Nothing confirms the email arrives.
+- **Not covered:** this fires when the cap is *hit*, which is after data has
+  already been lost. An alert at a percentage of the cap would give warning
+  instead, and does not exist.
+
+---
+
 ## Cost
 
 Metric alerts bill **per evaluated time series, not per rule**, at roughly
@@ -137,7 +236,13 @@ The default set is eight rules, so roughly **$0.80/month** — but
 dimensions are in use, not an estimate. Action groups themselves are free, as
 are the first 1,000 emails per month.
 
-Verify against the Azure Pricing Calculator before relying on any of this.
+The daily-cap rule is a **log search** alert, which is priced differently again
+— per rule, varying with evaluation frequency, rather than per time series. It
+is counted as a separate ~$0.50/month term, bringing dev to roughly
+**$1.30/month**.
+
+Verify against the Azure Pricing Calculator before relying on any of this. Both
+figures are order-of-magnitude planning aids, not budget numbers.
 
 ---
 
@@ -164,6 +269,11 @@ module "monitor" {
 
   # Measured against the running cluster, not guessed.
   threshold_overrides = { pods-pending = 3 }
+
+  # Derived from the cap, not the environment name.
+  enable_daily_cap_alert       = module.profile.profile.log_daily_quota_gb > 0
+  log_analytics_daily_quota_gb = module.profile.profile.log_daily_quota_gb
+  log_analytics_workspace_id   = module.log_analytics.id
 }
 ```
 
@@ -183,6 +293,12 @@ over variables — so it stays statically known and survives a cold apply.
 | `default_severity` | `2` | 0 Critical … 4 Verbose. |
 | `default_frequency` | `PT5M` | Shorter costs more. |
 | `default_window_size` | `PT15M` | Must be >= frequency. |
+| `enable_daily_cap_alert` | `false` | Capability flag. **Rejected when the workspace is uncapped** — the rule could never fire. |
+| `log_analytics_workspace_id` | `null` | The workspace's ARM `id`, **not** `workspace_id` (the customer GUID, which is not a valid scope). |
+| `log_analytics_daily_quota_gb` | `-1` | Passed in so the precondition evaluates at plan time. |
+| `daily_cap_alert_severity` | `1` | Data is already being dropped, and every rule above is blind. |
+| `daily_cap_alert_window_duration` | `PT1H` | Deliberately longer than the frequency — see above. |
+| `daily_cap_alert_mute_duration` | `PT6H` | Suppresses repeat notifications for one cap hit. |
 
 ## Key outputs
 
@@ -193,6 +309,8 @@ over variables — so it stays statically known and survives a cold apply.
 | `disabled_alerts` | Rules deployed but switched off |
 | `notifications_are_delivered` | False when the action group is disabled |
 | `metrics_monitored` | Alert key to metric, for confirming coverage |
+| `daily_cap_alert_is_deployed` | False means a capped workspace can stop collecting with no notification |
+| `daily_cap_alert_query` | The KQL, so it can be run by hand — the only way to confirm the rule would fire |
 
 ---
 
@@ -200,8 +318,9 @@ over variables — so it stays statically known and survives a cold apply.
 
 Out of scope by decision, not oversight:
 
-- **Log Analytics daily cap** — dev caps ingestion at 0.5 GB/day, and a hit cap
-  *drops* data unrecoverably, including security signals. Worth adding.
+- **Warning before the daily cap is reached** — the rule above fires when the
+  cap is *hit*, which is after data has already been lost. A rule at, say, 80%
+  of the cap would give warning instead. Not built.
 - **Data tier** — SQL, Redis, Storage, Key Vault availability and throttling.
 - **Subscription budget** — free, and directly relevant to a credit-limited
   subscription.
