@@ -5,12 +5,32 @@ Three-tier application topology on AKS, with all data services reachable only
 through private endpoints, controlled egress, and no public IP on any compute
 resource.
 
-> **Status: dev deployed.** 21 modules built. 19 are instantiated by dev's root
-> module; `application-gateway` and `load-balancer` are written but not deployed
-> — AKS provisions its own load balancer. Compute is AKS — see
-> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6b for what moving the tier
-> boundary from subnets into a cluster changes, and why dev's cluster is
-> deliberately not highly available.
+> **Status: dev deployed, qa written.** 21 modules built. 19 are instantiated
+> by dev's root module; `application-gateway` and `load-balancer` are written
+> but not deployed by dev — AKS provisions its own load balancer. Compute is
+> AKS — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6b for what moving
+> the tier boundary from subnets into a cluster changes, and why dev's cluster
+> is deliberately not highly available.
+
+### Environment status
+
+| Env | CIDR | State | Blocker |
+|---|---|---|---|
+| `dev` | `10.10.0.0/16` | **Deployed and verified.** 149 resources, no drift | — |
+| `qa` | `10.20.0.0/16` | **Written, validates, plans** (146 resources). Never applied | Needs 6 vCPU steady / 8 peak against a regional limit of 4, and ~$1,062/month. See [`environments/qa/README.md`](environments/qa/README.md) |
+| `stage` | `10.40.0.0/16` | Not written | Requires the **`firewall` module, which was never written** — see below |
+| `prod` | `10.30.0.0/16` | Not written | Same, plus ~24 vCPU at steady state |
+
+**`stage` and `prod` are blocked on more than cost.** Both set
+`enable_firewall = true` and `enable_nat_gateway = false` in the `profile`
+module, so their egress strategy is Azure Firewall — and the `firewall` module
+is an empty `.gitkeep` directory that was never written, for the cost reason in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6c.
+
+That is not a detail to work around by overriding them to a NAT Gateway:
+`stage`'s own profile says the firewall topology, its UDRs and its egress rules
+are *the reason stage exists*. A stage environment without a firewall validates
+nothing that qa does not already cover.
 
 ---
 
