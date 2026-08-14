@@ -335,6 +335,116 @@ variable "daily_cap_alert_mute_duration" {
 }
 
 ################################################################################
+# Daily cap WARNING alert
+#
+# The rule above fires when the cap is HIT, which is after data has already
+# been lost. This one fires while there is still time to act.
+################################################################################
+
+variable "enable_daily_cap_warning_alert" {
+  description = <<-EOT
+    Whether to deploy the "approaching the daily cap" warning.
+
+    Independent of `enable_daily_cap_alert` — they answer different questions,
+    and either is useful without the other. Both require a capped workspace.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "daily_cap_warning_percent" {
+  description = <<-EOT
+    Percentage of the daily cap at which to warn.
+
+    Must be below 100. At or above 100 the warning fires only once the cap has
+    already been hit, which is what the other rule is for, and leaves this one
+    contributing nothing but a duplicate notification.
+  EOT
+  type        = number
+  default     = 80
+
+  validation {
+    condition     = var.daily_cap_warning_percent > 0 && var.daily_cap_warning_percent < 100
+    error_message = "daily_cap_warning_percent must be between 1 and 99. At 100 or above the warning arrives after the data is already lost; at 0 or below it fires permanently."
+  }
+}
+
+variable "daily_cap_reset_hour_utc" {
+  description = <<-EOT
+    The UTC hour at which the workspace's daily cap resets. NO DEFAULT — it
+    must be read from the workspace and stated explicitly:
+
+      az monitor log-analytics workspace show -g <rg> -n <name> \
+        --query workspaceCapping.quotaNextResetTime -o tsv
+
+    The cap counts data ingested since the last reset, so this value defines
+    the window the warning query sums over. It is NOT midnight everywhere: this
+    platform's workspace resets at 11:00 UTC. A wrong value produces a query
+    that sums the wrong period, and one that is too late in the day sums a
+    window that has barely started — so the total stays near zero and the
+    warning never fires. Azure accepts the query either way.
+
+    There is no way to check this at plan time, which is why it has no default
+    to fall back to silently.
+  EOT
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.daily_cap_reset_hour_utc == null || (var.daily_cap_reset_hour_utc >= 0 && var.daily_cap_reset_hour_utc <= 23)
+    error_message = "daily_cap_reset_hour_utc must be an hour from 0 to 23."
+  }
+}
+
+variable "daily_cap_warning_evaluation_frequency" {
+  description = "How often the warning query runs. The Usage table is written hourly, so evaluating much more often than that costs money without detecting anything sooner."
+  type        = string
+  default     = "PT15M"
+
+  validation {
+    condition     = contains(["PT5M", "PT10M", "PT15M", "PT30M", "PT1H"], var.daily_cap_warning_evaluation_frequency)
+    error_message = "daily_cap_warning_evaluation_frequency must be one of PT5M, PT10M, PT15M, PT30M, PT1H."
+  }
+}
+
+variable "daily_cap_warning_window_duration" {
+  description = <<-EOT
+    Lookback window for the warning query. Must be at least P1D.
+
+    The query sums everything ingested since the last reset, which is up to 24
+    hours ago. The window is the rule's outer time filter, so a window shorter
+    than the cap period CLIPS the sum: the total comes out low, the threshold
+    is never reached, and the rule never fires while the workspace sails past
+    its cap. Azure accepts it and reports the rule healthy.
+  EOT
+  type        = string
+  default     = "P1D"
+
+  validation {
+    condition     = contains(["P1D", "P2D"], var.daily_cap_warning_window_duration)
+    error_message = "daily_cap_warning_window_duration must be P1D or P2D. Anything shorter clips the cap period and the rule silently never fires; Azure caps the window at 2 days."
+  }
+}
+
+# There is deliberately no daily_cap_warning_mute_duration. Azure rejects a
+# mute duration alongside auto-mitigation — "auto mitigation must be disabled
+# when mute action duration is set" — and the warning rule uses auto-mitigation,
+# which makes it stateful: it notifies once and resolves itself when the cap
+# period rolls over. Muting is the alternative for stateless rules, and it is
+# what the cap-HIT rule uses instead.
+
+variable "daily_cap_warning_severity" {
+  description = "Severity for the warning. Defaults to 2 (Warning): unlike the cap-hit rule, nothing has been lost yet and there is still time to act."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.daily_cap_warning_severity >= 0 && var.daily_cap_warning_severity <= 4
+    error_message = "Severity must be between 0 (Critical) and 4 (Verbose)."
+  }
+}
+
+################################################################################
 # Rule defaults
 ################################################################################
 

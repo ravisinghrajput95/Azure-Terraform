@@ -67,6 +67,11 @@ output "coverage_summary" {
     !var.action_group_enabled ? "WARNING: the action group is disabled — rules fire but no notification is delivered." : "",
     length(local.disabled_alerts) > 0 && !local.all_alerts_disabled ? "Disabled: ${join(", ", local.disabled_alerts)}." : "",
     var.enable_daily_cap_alert ? "Daily-cap alert watching a ${var.log_analytics_daily_quota_gb} GB/day cap." : "WARNING: no daily-cap alert. If the workspace caps ingestion, collection stops silently and every rule above goes blind until the cap resets.",
+    # Guarded on the reset hour as well as the flag: when it is null the
+    # configuration is invalid, and interpolating null here would fail the
+    # output and mask the precondition that explains why.
+    var.enable_daily_cap_warning_alert && var.daily_cap_reset_hour_utc != null ? "Warning at ${var.daily_cap_warning_percent}% of the cap, measured from the ${var.daily_cap_reset_hour_utc}:00 UTC reset." : "",
+    var.enable_daily_cap_alert && !var.enable_daily_cap_warning_alert ? "NOTE: the cap alert fires once the cap is HIT, which is after data has already been dropped. No warning precedes it." : "",
   ]))
 }
 
@@ -87,6 +92,21 @@ output "daily_cap_alert_query" {
 output "daily_cap_alert_is_deployed" {
   description = "Whether the daily-cap rule exists. False means a workspace that caps ingestion can stop collecting with no notification at all."
   value       = var.enable_daily_cap_alert
+}
+
+output "daily_cap_warning_alert_id" {
+  description = "Resource ID of the approaching-the-cap warning, or null when it is not deployed."
+  value       = try(azurerm_monitor_scheduled_query_rules_alert_v2.daily_cap_warning["daily-cap-warning"].id, null)
+}
+
+output "daily_cap_warning_query" {
+  description = "The KQL the warning rule evaluates, with the cap and reset hour already substituted. Run it against the workspace to see the current percentage — that is the only way to confirm the period boundary is right, since a wrong reset hour is invisible in Azure."
+  value       = var.enable_daily_cap_warning_alert ? local.daily_cap_warning_query : null
+}
+
+output "daily_cap_warning_is_deployed" {
+  description = "Whether the approaching-the-cap warning exists. False means the only cap alerting is the one that fires after data has already been lost."
+  value       = var.enable_daily_cap_warning_alert
 }
 
 output "daily_cap_alert_has_ever_fired" {

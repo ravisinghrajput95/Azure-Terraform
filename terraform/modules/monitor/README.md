@@ -138,8 +138,31 @@ the same moment, because the metrics they watch stop arriving. A capped
 workspace that hits its cap therefore disables this entire module silently, and
 this is the rule that says so.
 
-dev caps at **0.5 GB/day**. The cap has been hit at least once already, on
-2026-08-13, and nothing reported it.
+dev caps at **0.5 GB/day**, and hits it **daily** — on 2026-08-13, and again on
+2026-08-14 within six hours of the 11:00 UTC reset. Before these rules existed,
+nothing reported either.
+
+**What consumes it is AKS audit logging**, measured on 2026-08-14:
+
+| Data type | Volume | Share |
+|---|---|---|
+| `AzureDiagnostics` | 509.36 MB | 99% |
+| `AzureMetrics` | 4.38 MB | 1% |
+
+and within `AzureDiagnostics`, by record count over 24h:
+
+| Category | Records |
+|---|---|
+| `kube-audit` | 318,192 |
+| `kube-audit-admin` | 146,452 |
+| everything else combined | ~52,000 |
+
+The two audit categories are ~90% of all diagnostic records. This is a direct
+consequence of the design in ARCHITECTURE.md §1.4: the `diagnostics` module
+reads `azurerm_monitor_diagnostic_categories` and enables **every** category the
+resource offers. That is the right default for most resources and the wrong one
+for AKS, where `kube-audit` records every API server call and will exhaust a
+0.5 GB cap on its own. Not yet fixed — see "Not covered".
 
 ### The documented query does not work, and fails silently
 
@@ -218,9 +241,105 @@ is in**.
   workspace, with the query as written.
 - **NOT verified:** the rule has never fired, so notification delivery is
   untested end to end. Nothing confirms the email arrives.
-- **Not covered:** this fires when the cap is *hit*, which is after data has
-  already been lost. An alert at a percentage of the cap would give warning
-  instead, and does not exist.
+
+---
+
+## The daily cap WARNING alert
+
+A tenth rule. The one above reports a cap that has already been hit; this one
+reports a cap about to be hit, which is the only one of the two that can still
+be acted on.
+
+**It would have given ~44 minutes of warning.** Reconciled against the real
+2026-08-13 cap hit, summing billable `Usage` by `EndTime` from the 11:00 UTC
+reset:
+
+| EndTime (UTC) | hour | cumulative | % of 0.5 GB |
+|---|---|---|---|
+| 20:00 | 134.71 MB | 305.82 MB | 60% |
+| 21:00 | 133.23 MB | **439.05 MB** | **86%** ← 80% crossed |
+| 22:00 | 105.15 MB | 544.20 MB | 106% → OverQuota at **21:44** |
+
+### Three values that were measured, not assumed
+
+Each is silent if wrong: the query stays valid, the rule stays healthy, and the
+number is simply incorrect.
+
+| | Wrong-but-intuitive | Correct here | Why it matters |
+|---|---|---|---|
+| Period start | `startofday()` or `ago(24h)` | the **cap reset hour** | This workspace resets at **11:00 UTC**, not midnight. `ago(24h)` spans two cap periods and over-counts; `startofday()` under-counts for the 11 hours after midnight. |
+| Time column | `TimeGenerated` | **`EndTime`** | `EndTime` is the usage period the quantity belongs to; `TimeGenerated` is when the summary row was written. They diverge under ingestion latency — exactly when the number matters. |
+| MB per GB | 1000 | **1024** | `Usage.Quantity` is MB, `dailyQuotaGb` is GB. Dividing by 1000 reports ~2.4% low, enough to push an 80% warning past the cap it exists to precede. |
+
+Read the reset hour from the workspace rather than assuming it:
+
+```bash
+az monitor log-analytics workspace show -g <rg> -n <name> \
+  --query workspaceCapping.quotaNextResetTime -o tsv
+```
+
+`daily_cap_reset_hour_utc` has **no default** for this reason. A wrong hour
+cannot be detected at plan time, and one set too late in the day sums a window
+that has barely started — so the total stays near zero and the warning never
+fires.
+
+### The measure is a percentage, not a size
+
+`metric_measure_column = "PercentOfDailyCap"` with `threshold = 80`, so the rule
+reads as "80" in the portal and does not need recomputing if the cap changes.
+`time_aggregation_method` is `Maximum` rather than `Total`: the query returns
+one row, and if it ever returned more, `Total` would sum percentages into a
+meaningless number.
+
+### Auto-mitigation and muting are alternatives, not complements
+
+Azure rejects both at once:
+
+```
+auto mitigation must be disabled when mute action duration is set
+```
+
+| Rule | Setting | Why |
+|---|---|---|
+| Cap **hit** | auto-mitigation **off**, mute `PT6H` | Stateless: it re-notifies on every matching evaluation, so it needs muting. Auto-resolve would claim recovery while data is still being dropped. |
+| Cap **warning** | auto-mitigation **on**, no mute | Stateful: notifies once, stays open while ingestion is above the threshold, and resolves by itself when the period rolls over — which is accurate here. |
+
+### The window is load-bearing
+
+`window_duration` is the rule's outer time filter, and the query sums back to a
+reset up to 24 hours ago. A window shorter than the cap period **clips the sum**:
+the total comes out low, the threshold is never crossed, and the rule never
+fires while the workspace sails past its cap. A precondition rejects anything
+below `P1D`.
+
+### Both rules have now fired, on a real cap hit
+
+Deployed 2026-08-14 and confirmed firing the same day, against a genuine cap
+breach rather than a synthetic one:
+
+```
+alrt-cloudcart-dev-cus-daily-cap-warning   Sev2   fired 16:35:06Z
+alrt-cloudcart-dev-cus-daily-cap           Sev1   fired 16:26:30Z, again 16:41:29Z
+```
+
+Two things that observation settled:
+
+- **Muting suppresses notifications, not alert instances.** The cap-hit rule
+  carries `mute_actions_after_alert_duration = PT6H` and still produced a new
+  alert record on consecutive 15-minute evaluations. The mute applies to the
+  *action* — the email — not to alert creation. Reading the alert list and
+  concluding the mute is broken is a mistake worth not making twice.
+- **What is still unverified:** that the notification reaches the mailbox.
+  Alerts fired and the action group is attached, but delivery to an inbox
+  cannot be confirmed from the API.
+
+### Why not a metric alert
+
+The workspace publishes an `Ingestion Volume` metric, which looks like the
+obvious basis for this. It is not usable: it supports only the `Count`
+aggregation — counting samples, not bytes — and a metric alert evaluates a
+rolling window, which cannot express "cumulative since the 11:00 reset". Checked
+against the metric definitions API before writing the log query.
 
 ---
 
@@ -236,10 +355,10 @@ The default set is eight rules, so roughly **$0.80/month** — but
 dimensions are in use, not an estimate. Action groups themselves are free, as
 are the first 1,000 emails per month.
 
-The daily-cap rule is a **log search** alert, which is priced differently again
-— per rule, varying with evaluation frequency, rather than per time series. It
-is counted as a separate ~$0.50/month term, bringing dev to roughly
-**$1.30/month**.
+The two daily-cap rules are **log search** alerts, priced differently again —
+per rule, varying with evaluation frequency, rather than per time series. They
+are counted as a separate ~$0.50/month term each, bringing dev to roughly
+**$1.80/month**.
 
 Verify against the Azure Pricing Calculator before relying on any of this. Both
 figures are order-of-magnitude planning aids, not budget numbers.
@@ -274,6 +393,10 @@ module "monitor" {
   enable_daily_cap_alert       = module.profile.profile.log_daily_quota_gb > 0
   log_analytics_daily_quota_gb = module.profile.profile.log_daily_quota_gb
   log_analytics_workspace_id   = module.log_analytics.id
+
+  # Measured from the workspace, not assumed — this one resets at 11:00 UTC.
+  enable_daily_cap_warning_alert = module.profile.profile.log_daily_quota_gb > 0
+  daily_cap_reset_hour_utc       = 11
 }
 ```
 
@@ -299,6 +422,10 @@ over variables — so it stays statically known and survives a cold apply.
 | `daily_cap_alert_severity` | `1` | Data is already being dropped, and every rule above is blind. |
 | `daily_cap_alert_window_duration` | `PT1H` | Deliberately longer than the frequency — see above. |
 | `daily_cap_alert_mute_duration` | `PT6H` | Suppresses repeat notifications for one cap hit. |
+| `enable_daily_cap_warning_alert` | `false` | The rule that fires *before* data is lost. |
+| `daily_cap_warning_percent` | `80` | Must be below 100, or it warns after the fact. |
+| `daily_cap_reset_hour_utc` | **no default** | Must be read from the workspace. Not midnight everywhere. |
+| `daily_cap_warning_window_duration` | `P1D` | Shorter clips the cap period and the rule never fires. |
 
 ## Key outputs
 
@@ -311,6 +438,8 @@ over variables — so it stays statically known and survives a cold apply.
 | `metrics_monitored` | Alert key to metric, for confirming coverage |
 | `daily_cap_alert_is_deployed` | False means a capped workspace can stop collecting with no notification |
 | `daily_cap_alert_query` | The KQL, so it can be run by hand — the only way to confirm the rule would fire |
+| `daily_cap_warning_is_deployed` | False means the only cap alerting arrives after data is already lost |
+| `daily_cap_warning_query` | The warning KQL with cap and reset hour substituted, for checking the period boundary |
 
 ---
 
@@ -318,9 +447,13 @@ over variables — so it stays statically known and survives a cold apply.
 
 Out of scope by decision, not oversight:
 
-- **Warning before the daily cap is reached** — the rule above fires when the
-  cap is *hit*, which is after data has already been lost. A rule at, say, 80%
-  of the cap would give warning instead. Not built.
+- **Excluding `kube-audit` from the AKS diagnostic setting** — it is ~90% of
+  dev's ingestion and single-handedly exhausts the 0.5 GB/day cap, but the
+  `diagnostics` module enables every category a resource offers by design
+  (ARCHITECTURE.md §1.4). Narrowing it is a change to that module's contract,
+  not to this one, and audit logs are a security signal — dropping them is a
+  decision, not a cleanup.
+
 - **Data tier** — SQL, Redis, Storage, Key Vault availability and throttling.
 - **Subscription budget** — free, and directly relevant to a credit-limited
   subscription.

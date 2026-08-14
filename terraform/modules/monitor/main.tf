@@ -255,3 +255,109 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "daily_cap" {
     }
   }
 }
+
+################################################################################
+# Daily cap WARNING alert
+#
+# The rule above reports a cap that has already been hit. This one reports a
+# cap about to be hit, which is the only one of the two that can still be acted
+# on. Against the real 2026-08-13 cap hit it would have fired roughly 44
+# minutes early — see locals.tf for the reconciliation.
+#
+# Auto-mitigation is ON here, unlike the cap-hit rule: this is a threshold that
+# genuinely falls back below itself when the cap period resets, so resolving is
+# accurate rather than misleading.
+################################################################################
+
+resource "azurerm_monitor_scheduled_query_rules_alert_v2" "daily_cap_warning" {
+  for_each = var.enable_daily_cap_warning_alert ? toset(["daily-cap-warning"]) : toset([])
+
+  name                = "${var.alert_name_prefix}-${each.key}"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+
+  scopes      = [var.log_analytics_workspace_id]
+  severity    = var.daily_cap_warning_severity
+  description = "Log Analytics ingestion has passed ${var.daily_cap_warning_percent}% of the ${var.log_analytics_daily_quota_gb} GB daily cap for the current period. Nothing has been lost yet. When the cap is reached, collection STOPS until it resets and the dropped data is unrecoverable."
+
+  evaluation_frequency = var.daily_cap_warning_evaluation_frequency
+  window_duration      = var.daily_cap_warning_window_duration
+
+  criteria {
+    query = local.daily_cap_warning_query
+
+    # The query returns a single row holding a percentage, so the threshold in
+    # the portal reads as "80" and stays correct if the cap itself changes.
+    # Maximum rather than Total: if the query ever returned more than one row,
+    # Total would sum percentages into a meaningless number.
+    metric_measure_column   = "PercentOfDailyCap"
+    time_aggregation_method = "Maximum"
+    operator                = "GreaterThan"
+    threshold               = var.daily_cap_warning_percent
+
+    failing_periods {
+      number_of_evaluation_periods             = 1
+      minimum_failing_periods_to_trigger_alert = 1
+    }
+  }
+
+  # ON here, unlike the cap-hit rule, and NOT accompanied by a mute duration —
+  # Azure rejects that combination outright:
+  #
+  #   "auto mitigation must be disabled when mute action duration is set"
+  #
+  # The two are alternatives, not complements. Muting exists for stateless
+  # rules, which re-notify on every evaluation that matches; with
+  # auto-mitigation the alert is stateful, so it notifies once, stays open
+  # while ingestion remains above the threshold, and resolves by itself when
+  # the cap period rolls over and the percentage falls back. That is accurate
+  # here, whereas on the cap-hit rule it would have claimed recovery while data
+  # was still being dropped.
+  auto_mitigation_enabled = true
+
+  skip_query_validation = false
+
+  action {
+    action_groups = [azurerm_monitor_action_group.this.id]
+  }
+
+  tags = var.tags
+
+  lifecycle {
+    precondition {
+      condition = !local.daily_cap_warning_without_cap
+      error_message = join(" ", [
+        "enable_daily_cap_warning_alert is true but log_analytics_daily_quota_gb is ${var.log_analytics_daily_quota_gb}, which means the workspace is UNCAPPED.",
+        "There is no cap to approach, so the percentage the rule measures has no meaning and the rule can never fire.",
+        "Either set a daily cap on the workspace, or set enable_daily_cap_warning_alert = false."
+      ])
+    }
+
+    precondition {
+      condition = !local.daily_cap_warning_without_workspace
+      error_message = join(" ", [
+        "enable_daily_cap_warning_alert is true but log_analytics_workspace_id is null or empty.",
+        "Pass the workspace's full ARM resource ID — the log-analytics module's `id` output, not `workspace_id`, which is the customer GUID and is not a valid alert scope."
+      ])
+    }
+
+    precondition {
+      condition = !local.daily_cap_warning_without_reset_hour
+      error_message = join(" ", [
+        "enable_daily_cap_warning_alert is true but daily_cap_reset_hour_utc is null.",
+        "The daily cap counts data ingested since its last reset, so the query has to know when that was. It is NOT midnight everywhere — this platform's workspace resets at 11:00 UTC.",
+        "There is deliberately no default: a wrong hour produces a query that sums the wrong window, which Azure accepts and reports as healthy while the total is simply incorrect.",
+        "Read the real value with: az monitor log-analytics workspace show -g <rg> -n <name> --query workspaceCapping.quotaNextResetTime -o tsv"
+      ])
+    }
+
+    precondition {
+      condition = !local.daily_cap_warning_window_too_short
+      error_message = join(" ", [
+        "daily_cap_warning_window_duration (${var.daily_cap_warning_window_duration}) is shorter than the 24-hour cap period.",
+        "The window is the rule's outer time filter, so a shorter one CLIPS the sum: the total comes out low, the threshold is never crossed, and the rule never fires while the workspace sails past its cap.",
+        "Azure accepts this and reports the rule healthy. Use P1D or P2D."
+      ])
+    }
+  }
+}

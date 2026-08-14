@@ -140,3 +140,30 @@ variable "aks_cluster_admin_principal_ids" {
   type        = list(string)
   default     = []
 }
+
+################################################################################
+# Observability
+################################################################################
+
+variable "log_analytics_daily_cap_reset_hour_utc" {
+  description = <<-EOT
+    The UTC hour at which this workspace's daily ingestion cap resets.
+
+    NOT midnight — this workspace resets at 11:00 UTC. The value defines the
+    window the cap-warning query sums over, and a wrong one produces a query
+    Azure accepts and reports healthy while summing the wrong period.
+
+    Verify before changing:
+
+      az monitor log-analytics workspace show \
+        -g rg-cloudcart-dev-cus-mon -n log-cloudcart-dev-cus-001 \
+        --query workspaceCapping.quotaNextResetTime -o tsv
+  EOT
+  type        = number
+  default     = 11
+
+  validation {
+    condition     = var.log_analytics_daily_cap_reset_hour_utc >= 0 && var.log_analytics_daily_cap_reset_hour_utc <= 23
+    error_message = "Must be an hour from 0 to 23."
+  }
+}

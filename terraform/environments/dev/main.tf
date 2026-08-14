@@ -906,6 +906,15 @@ module "monitor" {
   enable_daily_cap_alert       = module.profile.profile.log_daily_quota_gb > 0
   log_analytics_daily_quota_gb = module.profile.profile.log_daily_quota_gb
   log_analytics_workspace_id   = module.log_analytics.id
+
+  # The cap-hit rule above fires once ingestion has already stopped. This one
+  # fires while there is still time to act: against the real cap hit of
+  # 2026-08-13 it would have arrived roughly 44 minutes earlier.
+  #
+  # The reset hour is a measured property of the workspace, not a convention —
+  # this one resets at 11:00 UTC, not midnight. See the variable's description.
+  enable_daily_cap_warning_alert = module.profile.profile.log_daily_quota_gb > 0
+  daily_cap_reset_hour_utc       = var.log_analytics_daily_cap_reset_hour_utc
 }
 
 ################################################################################

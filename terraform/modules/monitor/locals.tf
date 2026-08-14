@@ -257,7 +257,9 @@ locals {
   ##############################################################################
   enabled_alert_count = length(local.enabled_alerts)
 
-  indicative_monthly_cost_usd = (local.enabled_alert_count * 0.10) + (var.enable_daily_cap_alert ? 0.50 : 0)
+  log_search_alert_count = (var.enable_daily_cap_alert ? 1 : 0) + (var.enable_daily_cap_warning_alert ? 1 : 0)
+
+  indicative_monthly_cost_usd = (local.enabled_alert_count * 0.10) + (local.log_search_alert_count * 0.50)
 }
 
 ################################################################################
@@ -320,5 +322,74 @@ locals {
   daily_cap_window_shorter_than_frequency = var.enable_daily_cap_alert && (
     lookup(local.duration_minutes, var.daily_cap_alert_window_duration, 0) <
     lookup(local.duration_minutes, var.daily_cap_alert_evaluation_frequency, 0)
+  )
+}
+
+################################################################################
+# Daily cap WARNING query
+#
+# Fires while there is still time to act, rather than once the data is gone.
+#
+# THREE THINGS HERE WERE MEASURED AGAINST THE LIVE WORKSPACE, NOT ASSUMED.
+# All three are silent if wrong: the query stays valid, the rule stays healthy,
+# and the total simply comes out wrong.
+#
+#   1. The period starts at the CAP RESET HOUR, not midnight, and not 24h ago.
+#      This workspace resets at 11:00 UTC. A rolling ago(24h) window spans two
+#      cap periods and over-counts; startofday() under-counts for the 11 hours
+#      after midnight. Read the real value from:
+#        az monitor log-analytics workspace show ... \
+#          --query workspaceCapping.quotaNextResetTime
+#
+#   2. Filter and bin on EndTime, NOT TimeGenerated. EndTime is the usage
+#      period the quantity belongs to; TimeGenerated is when the summary row
+#      was written, and the two diverge under ingestion latency — which is
+#      exactly the moment the number matters.
+#
+#   3. A GB is 1024 MB here. Usage.Quantity is in MB and dailyQuotaGb is in GB.
+#      Dividing by 1000 reports ~2.4% low, which is enough to push an 80%
+#      warning past the cap it was meant to precede.
+#
+# Reconciled against the real cap hit of 2026-08-13. Summing billable Usage by
+# EndTime from 11:00 UTC gives 439.05 MB (85.8% of 0.5 GB) at 21:00 and 544.20
+# MB (106%) at 22:00; Azure recorded OverQuota at 21:44. An 80% rule would have
+# fired at the 21:00 record, roughly 44 minutes before ingestion stopped.
+#
+# The measure is a PERCENTAGE rather than an absolute size, so the rule's
+# threshold reads as "80" in the portal and does not have to be recomputed if
+# the cap changes.
+################################################################################
+
+locals {
+  daily_cap_warning_query = <<-KQL
+    let capGB = ${var.log_analytics_daily_quota_gb};
+    let resetHour = ${coalesce(var.daily_cap_reset_hour_utc, 0)}h;
+    let periodStart = iff(
+        now() - startofday(now()) >= resetHour,
+        startofday(now()) + resetHour,
+        startofday(now() - 1d) + resetHour
+    );
+    Usage
+    | where IsBillable == true
+    | where EndTime > periodStart
+    | summarize IngestedMB = sum(Quantity)
+    | extend PercentOfDailyCap = IngestedMB / 1024.0 / capGB * 100.0
+    | project PercentOfDailyCap
+  KQL
+
+  daily_cap_warning_without_cap = var.enable_daily_cap_warning_alert && local.workspace_is_uncapped
+
+  daily_cap_warning_without_workspace = var.enable_daily_cap_warning_alert && (
+    var.log_analytics_workspace_id == null || var.log_analytics_workspace_id == ""
+  )
+
+  # No default to fall back on, because a wrong reset hour cannot be detected
+  # at plan time and produces a rule that quietly sums the wrong window.
+  daily_cap_warning_without_reset_hour = var.enable_daily_cap_warning_alert && var.daily_cap_reset_hour_utc == null
+
+  # The window is the rule's outer time filter. Shorter than the cap period and
+  # the sum is clipped, so the threshold is never reached.
+  daily_cap_warning_window_too_short = var.enable_daily_cap_warning_alert && (
+    lookup(local.duration_minutes, var.daily_cap_warning_window_duration, 0) < 1440
   )
 }

@@ -506,3 +506,189 @@ run "counts_the_daily_cap_alert_in_indicative_cost" {
     error_message = "Log search alerts are priced per rule, separately from metric alerts, and must be counted."
   }
 }
+
+################################################################################
+# Daily cap WARNING alert
+#
+# The cap-hit rule fires after the data is gone. This one has to fire before,
+# which makes its time window load-bearing: every failure below produces a
+# query Azure accepts, validates and reports healthy, whose total is simply
+# wrong.
+################################################################################
+
+run "does_not_deploy_the_cap_warning_by_default" {
+  command = plan
+
+  assert {
+    condition     = output.daily_cap_warning_is_deployed == false
+    error_message = "The cap warning must be opt-in."
+  }
+
+  assert {
+    condition     = output.daily_cap_warning_alert_id == null
+    error_message = "No warning rule should exist when the capability flag is off."
+  }
+}
+
+run "notes_the_missing_warning_when_only_the_cap_hit_rule_is_deployed" {
+  command = plan
+
+  variables {
+    enable_daily_cap_alert       = true
+    log_analytics_daily_quota_gb = 0.5
+    log_analytics_workspace_id   = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+  }
+
+  assert {
+    condition     = strcontains(output.coverage_summary, "after data has already been dropped")
+    error_message = "The summary must state that the cap alert alone gives no advance warning."
+  }
+}
+
+run "accepts_the_cap_warning_on_a_capped_workspace" {
+  command = plan
+
+  variables {
+    enable_daily_cap_warning_alert = true
+    log_analytics_daily_quota_gb   = 0.5
+    daily_cap_reset_hour_utc       = 11
+    log_analytics_workspace_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+  }
+
+  assert {
+    condition     = output.daily_cap_warning_is_deployed == true
+    error_message = "A capped workspace with the flag on should deploy the warning."
+  }
+
+  assert {
+    condition     = strcontains(output.coverage_summary, "80% of the cap")
+    error_message = "The summary should state the warning threshold."
+  }
+}
+
+# The reset hour cannot be validated against Azure at plan time, so the only
+# protection is refusing to guess it.
+run "rejects_the_cap_warning_with_no_reset_hour" {
+  command = plan
+
+  variables {
+    enable_daily_cap_warning_alert = true
+    log_analytics_daily_quota_gb   = 0.5
+    daily_cap_reset_hour_utc       = null
+    log_analytics_workspace_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+  }
+
+  expect_failures = [azurerm_monitor_scheduled_query_rules_alert_v2.daily_cap_warning]
+}
+
+run "rejects_the_cap_warning_on_an_uncapped_workspace" {
+  command = plan
+
+  variables {
+    enable_daily_cap_warning_alert = true
+    log_analytics_daily_quota_gb   = -1
+    daily_cap_reset_hour_utc       = 11
+    log_analytics_workspace_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+  }
+
+  expect_failures = [azurerm_monitor_scheduled_query_rules_alert_v2.daily_cap_warning]
+}
+
+run "rejects_the_cap_warning_with_no_workspace_id" {
+  command = plan
+
+  variables {
+    enable_daily_cap_warning_alert = true
+    log_analytics_daily_quota_gb   = 0.5
+    daily_cap_reset_hour_utc       = 11
+    log_analytics_workspace_id     = null
+  }
+
+  expect_failures = [azurerm_monitor_scheduled_query_rules_alert_v2.daily_cap_warning]
+}
+
+# A window shorter than the cap period clips the sum, so the threshold is never
+# crossed and the rule never fires.
+run "rejects_a_cap_warning_window_shorter_than_the_cap_period" {
+  command = plan
+
+  variables {
+    enable_daily_cap_warning_alert    = true
+    log_analytics_daily_quota_gb      = 0.5
+    daily_cap_reset_hour_utc          = 11
+    log_analytics_workspace_id        = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+    daily_cap_warning_window_duration = "PT1H"
+  }
+
+  expect_failures = [var.daily_cap_warning_window_duration]
+}
+
+run "rejects_a_warning_percentage_at_or_above_the_cap" {
+  command = plan
+
+  variables {
+    enable_daily_cap_warning_alert = true
+    log_analytics_daily_quota_gb   = 0.5
+    daily_cap_reset_hour_utc       = 11
+    log_analytics_workspace_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+    daily_cap_warning_percent      = 100
+  }
+
+  expect_failures = [var.daily_cap_warning_percent]
+}
+
+# Regression guards on the three values that were measured against the live
+# workspace. Each is silent if changed back to the intuitive-but-wrong form.
+run "cap_warning_query_measures_the_right_window_and_units" {
+  command = plan
+
+  variables {
+    enable_daily_cap_warning_alert = true
+    log_analytics_daily_quota_gb   = 0.5
+    daily_cap_reset_hour_utc       = 11
+    log_analytics_workspace_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+  }
+
+  assert {
+    condition     = strcontains(output.daily_cap_warning_query, "EndTime > periodStart")
+    error_message = "The query must filter on EndTime. TimeGenerated is when the summary row was written, and the two diverge under ingestion latency."
+  }
+
+  assert {
+    condition     = !strcontains(output.daily_cap_warning_query, "ago(24h)")
+    error_message = "A rolling 24h window spans two cap periods and over-counts. The period starts at the reset hour."
+  }
+
+  assert {
+    condition     = strcontains(output.daily_cap_warning_query, "11h")
+    error_message = "The configured reset hour must appear in the query; the cap does not reset at midnight everywhere."
+  }
+
+  assert {
+    condition     = strcontains(output.daily_cap_warning_query, "1024.0")
+    error_message = "Usage.Quantity is MB and the cap is GB. Dividing by 1000 reports ~2.4% low, enough to push an 80% warning past the cap it precedes."
+  }
+
+  assert {
+    condition     = strcontains(output.daily_cap_warning_query, "IsBillable == true")
+    error_message = "The cap counts billable ingestion."
+  }
+}
+
+run "counts_both_log_search_alerts_in_indicative_cost" {
+  command = plan
+
+  variables {
+    enable_daily_cap_alert         = true
+    enable_daily_cap_warning_alert = true
+    log_analytics_daily_quota_gb   = 0.5
+    daily_cap_reset_hour_utc       = 11
+    log_analytics_workspace_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/log-test"
+  }
+
+  # 8 metric alerts at 0.10 plus two log search alerts at 0.50.
+  assert {
+    condition     = output.indicative_monthly_cost_usd == 1.8
+    error_message = "Both log search alerts must be counted."
+  }
+}
