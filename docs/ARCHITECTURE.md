@@ -158,8 +158,9 @@ so a non-zonal region degrades to `[]` explicitly instead of failing at apply.
 ## 2. Traffic flow
 
 > **As designed, not as deployed.** The Azure Firewall in this section and in
-> the §3 diagram was never built — egress is a NAT Gateway with no filtering.
-> See §6c.
+> the §3 diagram has never run. The module exists and `stage` and `prod`
+> compose it, but neither has been applied; `dev` and `qa` egress through a NAT
+> Gateway with no filtering. See §6c.
 
 ```
 Users ──► Public IP (zone-redundant)
@@ -449,7 +450,7 @@ back to the network without renumbering.
 | Least privilege | Per-tier identities with scoped role assignments — app tier cannot read biz tier's secrets |
 | Encryption in transit | TLS 1.2 minimum on storage/SQL/Redis; WAF terminates TLS with a Key Vault certificate |
 | Egress control | *Designed:* all workload subnets default-route to Azure Firewall with explicit FQDN/network rules. **Not deployed — NAT Gateway, unfiltered. See §6c.** |
-| Perimeter inspection | *Designed:* WAF v2 in Prevention mode with OWASP managed rule set. **Not deployed — `application-gateway` is written but not instantiated.** |
+| Perimeter inspection | *Designed:* WAF v2 in Prevention mode with OWASP managed rule set. **Never applied — `application-gateway` is composed by `qa`, `stage` and `prod`, none of which has ever been deployed. `dev`, the only environment that ran, had no ingress at all.** |
 | Auditability | Diagnostic settings on every resource → Log Analytics; activity logs exported |
 | Key management | Key Vault with soft-delete + purge protection enabled (irreversible once on — deliberate) |
 | Defender-ready | Resources emit the categories Defender for Cloud plans consume; enabling the plans is a subscription-level decision left as a variable |
@@ -500,7 +501,7 @@ the network, then data, then compute, then observability wiring.
 | 6 | `networking` | 3 | VNet + subnets; the address space everything binds to. |
 | 7 | `nsg` | 6 | Attaches to subnets. |
 | 8 | `route-table` | 6 | Needs subnets; firewall IP injected later as a variable. |
-| 9 | ~~`firewall`~~ | 6, 8 | **Never written.** ~$900/month against a $200 credit. Egress is a NAT Gateway from `networking`. See §6c. |
+| 9 | `firewall` | 6, 8 | **Written, never applied.** `stage` and `prod` compose it and could not be composed without it; `dev` and `qa` egress through a NAT Gateway from `networking` instead. ~$900/month against a $200 credit is why no firewall has ever run here. See §6c. |
 | 10 | `private-dns` | 6 | Zones + VNet links, required before any private endpoint resolves. |
 | 11 | `managed-identity` | 3 | Identities must exist before RBAC on vault/storage. |
 | 12 | `key-vault` | 6, 10, 11 | Private endpoint + RBAC assignments. |
@@ -693,20 +694,30 @@ nothing. The `load-balancer` module remains in the repository, unused.
 
 ---
 
-## 6c. There is no firewall. Egress is a NAT Gateway.
+## 6c. No firewall has ever run. `dev` and `qa` egress through a NAT Gateway.
 
 §1.1, §2, §4 and the §3 diagram all describe egress forced through Azure
-Firewall by a `0.0.0.0/0` UDR. **That design was never built.** The `firewall`
-module directory contains only a `.gitkeep`.
+Firewall by a `0.0.0.0/0` UDR. **Nothing has ever run that way.**
 
 The reason is §1.7's own arithmetic, applied honestly: Azure Firewall Standard
 is ~$900/month before data processing, against a $200 credit with the spending
 limit on. It is by an order of magnitude the most expensive line in the design,
-and it guards a single-node development cluster.
+and in `dev` it would have guarded a single-node development cluster.
 
-What is deployed instead:
+> **Corrected 2026-08-15.** This section previously said the design "was never
+> built" and that the `firewall` module directory "contains only a `.gitkeep`".
+> The second half stopped being true when the module was written on 2026-08-14,
+> after this section: `stage` and `prod` both set `enable_firewall = true` and
+> `enable_nat_gateway = false`, so the module is their egress path and neither
+> environment could be composed without it. **It has still never been applied**,
+> here or anywhere — a firewall cannot be deployed on this subscription at any
+> point in its lifetime, so every claim about it is a claim about
+> configuration and mocked tests. Its own README leads with that. What remains
+> exactly true is the rest of this section, which is about `dev` and `qa`.
 
-| Designed | Deployed |
+`dev` and `qa` do not use the module at all. What `dev` actually ran:
+
+| Designed | What `dev` ran |
 |---|---|
 | Azure Firewall + `0.0.0.0/0` UDR per workload subnet | **NAT Gateway** in `networking`, ~$35/month |
 | Egress FQDN/network rules, inspected | Egress unfiltered — NAT Gateway does not inspect |
@@ -720,7 +731,8 @@ address — which is what the `aks` module's `node_egress_ip_ranges` preconditio
 depends on — and nothing more.
 
 This is the correct trade for a credit-limited dev environment and the wrong one
-for prod. It is recorded here rather than quietly omitted because a reader of §2
+for prod — which is why `stage` and `prod` compose the firewall instead, on
+paper. It is recorded here rather than quietly omitted because a reader of §2
 would otherwise reasonably believe traffic is inspected.
 
 ---
