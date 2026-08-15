@@ -92,6 +92,7 @@ decision lives, not only here.
 
 ```
 docs/                architecture, networking and deployment documentation
+scripts/             four checks that answer what terraform plan cannot
 bootstrap/           Phase 0 — the state backend, on local state by necessity
 terraform/
 ├── environments/    one root module per environment (dev, qa, stage, prod)
@@ -113,6 +114,7 @@ test the preconditions, not the provider: a test asserting that
 
 | Document | Contents |
 |---|---|
+| [`scripts/README.md`](scripts/README.md) | Preflight, ingestion, cluster access and drift checks — each one exists because its absence caused a real failure |
 | [`LICENSE`](LICENSE) | MIT |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Conventions that are load-bearing rather than stylistic, and the failures behind them |
 | [`SECURITY.md`](SECURITY.md) | Security posture, and the weaknesses deliberately accepted |
