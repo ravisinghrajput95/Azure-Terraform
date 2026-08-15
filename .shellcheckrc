@@ -31,23 +31,18 @@ severity=style
 #           across systems. `command -v` is a builtin and specified by POSIX.
 #   SC2248  unquoted expansion, even where the value looks safe today. The
 #           value stops being safe when someone changes what fills it.
+#   SC2312  a failing command inside `$( )` does not stop the script — `set -e`
+#           is suspended inside an `if` condition — so its empty output is
+#           consumed as if it were an answer. This is the failure class the
+#           whole repository is built around, and it had already happened
+#           twice in preflight.sh. Both are fixed; the check keeps them fixed.
 enable=avoid-nullary-conditions
 enable=check-unassigned-uppercase
 enable=deprecate-which
 enable=quote-safe-variables
+enable=check-extra-masked-returns
 
 # Deliberately NOT enabled, recorded so the omission reads as a decision:
-#
-#   check-extra-masked-returns (SC2312)  4 findings. Under `set -euo pipefail`
-#           a failing command inside `$( )` does not stop the script, so its
-#           empty output is consumed as if it were an answer. That is exactly
-#           the failure class this repository is built around, and one of the
-#           four is real: preflight.sh builds a SQL admin password from
-#           `$(openssl rand ...)`, and if openssl is absent the create fails
-#           and the script reports Azure SQL as RESTRICTED in the region.
-#           ARCHITECTURE.md §6a moved the whole platform on that signal.
-#           Enabling this check is a script change, not a lint change, so it
-#           is tracked separately rather than turned on with suppressions.
 #
 #   add-default-case (SC2249)  1 finding, and it is a false one: the
 #           spending-limit case warns on `On` and correctly says nothing for

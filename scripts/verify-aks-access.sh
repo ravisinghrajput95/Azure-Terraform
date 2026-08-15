@@ -52,7 +52,8 @@ cid=$(az aks show -g "$RG" -n "$CLUSTER" --query id -o tsv)
 me=$(az ad signed-in-user show --query id -o tsv 2>/dev/null || echo "")
 roles=$(az role assignment list --scope "$cid" --assignee "$me" --query "[].roleDefinitionName" -o tsv 2>/dev/null || true)
 if echo "$roles" | grep -q "RBAC Cluster Admin\|RBAC Admin\|RBAC Writer\|RBAC Reader"; then
-  ok "data-plane role present: $(echo "$roles" | tr '\n' ' ')"
+  roles_flat=$(echo "$roles" | tr '\n' ' ')
+  ok "data-plane role present: ${roles_flat}"
 else
   bad "no Kubernetes data-plane role at cluster scope. Owner/Contributor do NOT count — they carry dataActions: []"
 fi

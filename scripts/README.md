@@ -153,5 +153,23 @@ output breaks any anchored `grep` so `drift.sh` needs `-no-color`, and both
 Azure-querying scripts emitted a raw `ResourceGroupNotFound` instead of saying
 the environment simply is not deployed.
 
+Two more were found later, on 2026-08-15, by running `preflight.sh` against a
+stubbed `az` with pieces of the environment removed. Both had the same shape —
+**a query that did not run, reported as a finding about Azure**:
+
+- With `openssl` absent, the SQL probe built an empty admin password. Azure
+  refused the create for complexity and the script reported *"Azure SQL
+  provisioning is RESTRICTED in this region"* — the exact signal
+  ARCHITECTURE.md §6a moved the whole platform on. `set -e` did not catch it
+  because the command substitution sat inside an `if` condition, where `set -e`
+  is suspended.
+- When `az vm list-usage` failed, a `|| echo "0 0"` fallback reported *"only 0
+  vCPU available"*, a hard blocker, for what was really a mistyped region or an
+  expired login.
+
+Both now say that the check did not run and that this is not a statement about
+Azure. ShellCheck's `check-extra-masked-returns` is enabled in `.shellcheckrc`
+to keep the class from coming back.
+
 No script contains a subscription ID, storage account name or resource group
 name. All of those are arguments.

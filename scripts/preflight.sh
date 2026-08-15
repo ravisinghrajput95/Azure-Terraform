@@ -40,7 +40,8 @@ ok()   { printf '  \033[32mPASS\033[0m  %s\n' "$*"; }
 bad()  { printf '  \033[31mFAIL\033[0m  %s\n' "$*"; fail=1; }
 warn() { printf '  \033[33mWARN\033[0m  %s\n' "$*"; }
 
-echo "Preflight against $(az account show --query name -o tsv) in ${REGION}"
+sub_name=$(az account show --query name -o tsv 2>/dev/null || echo "UNKNOWN (az account show failed — are you logged in?)")
+echo "Preflight against ${sub_name} in ${REGION}"
 echo
 
 echo "Subscription"
@@ -64,16 +65,28 @@ esac
 echo
 
 echo "Regional vCPU"
-read -r used limit < <(az vm list-usage -l "$REGION" \
-  --query "[?name.value=='cores'].[currentValue,limit]" -o tsv 2>/dev/null || echo "0 0")
-avail=$(( limit - used ))
-note "cores: ${used} used of ${limit}  ->  ${avail} available"
-note "this is a TOTAL across every VM family; a per-family limit does not raise it"
-if [ -n "$REQUIRED_VCPU" ]; then
-  if [ "$avail" -ge "$REQUIRED_VCPU" ]; then
-    ok "${REQUIRED_VCPU} vCPU required, ${avail} available"
-  else
-    bad "${REQUIRED_VCPU} vCPU required, only ${avail} available. AKS also adds a surge node during upgrades, so a cluster that exactly fits cannot be patched."
+# The failure and the answer are read separately, because they are different
+# facts. This previously substituted "0 0" when the query failed, which then
+# reported "only 0 available" — a hard blocker — for what was actually a
+# mistyped region or an expired login. Same shape as the SQL probe below:
+# a query that did not run must not be reported as a finding about Azure.
+cores=$(az vm list-usage -l "$REGION" \
+  --query "[?name.value=='cores'].[currentValue,limit]" -o tsv 2>/dev/null || true)
+if [ -z "$cores" ]; then
+  bad "could not read regional vCPU usage for ${REGION}; the query returned nothing"
+  note "this is NOT a quota finding and says nothing about your headroom"
+  note "check the region name, and that 'az account show' succeeds"
+else
+  read -r used limit <<<"$cores"
+  avail=$(( limit - used ))
+  note "cores: ${used} used of ${limit}  ->  ${avail} available"
+  note "this is a TOTAL across every VM family; a per-family limit does not raise it"
+  if [ -n "$REQUIRED_VCPU" ]; then
+    if [ "$avail" -ge "$REQUIRED_VCPU" ]; then
+      ok "${REQUIRED_VCPU} vCPU required, ${avail} available"
+    else
+      bad "${REQUIRED_VCPU} vCPU required, only ${avail} available. AKS also adds a surge node during upgrades, so a cluster that exactly fits cannot be patched."
+    fi
   fi
 fi
 echo
@@ -92,19 +105,36 @@ fi
 
 echo "Azure SQL provisioning"
 if [ "$PROBE_SQL" -eq 1 ]; then
-  rg="rg-preflight-$RANDOM"
-  srv="sqlpreflight$RANDOM"
-  note "creating a throwaway logical server (free, deleted immediately)"
-  az group create -n "$rg" -l "$REGION" -o none 2>/dev/null || true
-  if az sql server create -g "$rg" -n "$srv" -l "$REGION" \
-       --admin-user preflight --admin-password "$(openssl rand -base64 24)Aa1!" -o none 2>/dev/null; then
-    ok "Azure SQL can be provisioned in ${REGION} for this subscription"
-  else
-    bad "Azure SQL provisioning is RESTRICTED in ${REGION} for this subscription"
-    note "this is per-subscription, not capacity, and does not resolve on its own"
-    note "probe other regions before building anything that depends on SQL"
+  # The password is generated HERE and not inline in the `if` below, which is
+  # where it used to be. set -e is suspended inside an if condition, so a
+  # failing openssl there did not stop the script — it produced an EMPTY
+  # password, az rejected the create for complexity, and the else branch
+  # reported the region as RESTRICTED. That is the signal §6a moved the entire
+  # platform on. A create refused for a bad password and a create refused by a
+  # subscription-level restriction must never print the same verdict.
+  pw=""
+  if command -v openssl >/dev/null 2>&1; then
+    pw="$(openssl rand -base64 24)Aa1!"
   fi
-  az group delete -n "$rg" --yes --no-wait -o none 2>/dev/null || true
+  if [ "${#pw}" -lt 16 ]; then
+    bad "cannot generate a password: openssl is unavailable, so the probe did NOT run"
+    note "this is NOT a regional restriction and says nothing about ${REGION}"
+    note "install openssl and re-run before concluding anything about SQL"
+  else
+    rg="rg-preflight-$RANDOM"
+    srv="sqlpreflight$RANDOM"
+    note "creating a throwaway logical server (free, deleted immediately)"
+    az group create -n "$rg" -l "$REGION" -o none 2>/dev/null || true
+    if az sql server create -g "$rg" -n "$srv" -l "$REGION" \
+         --admin-user preflight --admin-password "$pw" -o none 2>/dev/null; then
+      ok "Azure SQL can be provisioned in ${REGION} for this subscription"
+    else
+      bad "Azure SQL provisioning is RESTRICTED in ${REGION} for this subscription"
+      note "this is per-subscription, not capacity, and does not resolve on its own"
+      note "probe other regions before building anything that depends on SQL"
+    fi
+    az group delete -n "$rg" --yes --no-wait -o none 2>/dev/null || true
+  fi
 else
   warn "skipped. There is NO API that reports this — the only reliable check is"
   note "attempting a create. Re-run with --probe-sql to provision and immediately"
