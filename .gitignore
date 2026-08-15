@@ -6,6 +6,10 @@
 **/.terraform/*
 .terraform/
 
+# `make validate` uses its own data directory so it never reads or writes
+# the .terraform that `make plan` depends on.
+**/.terraform-validate/
+
 # Terraform state
 *.tfstate
 *.tfstate.*

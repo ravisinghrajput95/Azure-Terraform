@@ -37,6 +37,20 @@ fmt-check: ## Fail if anything is unformatted (what CI runs)
 # gets fixed, reports the second, and so on — while CI, which does collect,
 # shows all five at once. The two must agree or `make check` stops predicting
 # the pipeline, which is the only reason this target exists.
+#
+# TF_DATA_DIR points somewhere other than .terraform on purpose, and it is the
+# difference between this target working locally and only working in CI.
+# `terraform init -backend=false` still READS the backend recorded in an
+# existing .terraform, so in any environment directory where a real init has
+# been run it tries to reach the state account and fails — "Error loading
+# state" — before validation happens at all. CI never sees this because a fresh
+# checkout has no .terraform to read.
+#
+# A separate data directory means validation neither reads nor writes the one
+# `make plan` depends on, so running this can never disturb a configured
+# environment. Validation should not care whether you have ever run init.
+TF_VALIDATE_DIR := .terraform-validate
+
 .PHONY: validate
 validate: ## terraform validate every module and environment
 	@set -uo pipefail; \
@@ -44,7 +58,8 @@ validate: ## terraform validate every module and environment
 	for dir in terraform/modules/*/ terraform/environments/*/ bootstrap/; do \
 	  [ -n "$$(find $$dir -maxdepth 1 -name '*.tf' -print -quit)" ] || continue; \
 	  echo "==> $$dir"; \
-	  ( cd $$dir && terraform init -backend=false -input=false >/dev/null && terraform validate ) || failed=1; \
+	  ( cd $$dir && export TF_DATA_DIR=$(TF_VALIDATE_DIR) && \
+	    terraform init -backend=false -input=false >/dev/null && terraform validate ) || failed=1; \
 	done; \
 	exit $$failed
 
@@ -139,8 +154,32 @@ security: ## Trivy misconfiguration scan, per directory
 	if [ $$failed -eq 0 ]; then echo "trivy: clean at HIGH,CRITICAL in every directory"; fi; \
 	exit $$failed
 
+# The version CI pins, read from the workflow so there is one source of truth.
+TF_CI_VERSION := $(shell grep -m1 'TF_VERSION:' .github/workflows/terraform-ci.yml | tr -d ' "' | cut -d: -f2)
+
+# Terraform versions do not evaluate identically, and the difference is not
+# cosmetic. `&&` and `||` short-circuit on newer versions and do NOT on 1.9.8,
+# so an expression like `x != null && x > 0` passes locally on a recent build
+# and fails outright on the pinned one — which is how qa, stage and prod came
+# to fail `terraform validate` in CI while `make check` was green for days.
+#
+# A warning rather than a hard failure: the pinned version is what the gate
+# uses, but forcing every developer onto it to run any target at all is worse
+# than telling them their result may not match.
+.PHONY: tf-version
+tf-version: ## Warn when local terraform differs from the version CI pins
+	@have=$$(terraform version | head -1 | awk '{print $$2}' | tr -d 'v'); \
+	if [ "$$have" != "$(TF_CI_VERSION)" ]; then \
+	  echo ""; \
+	  echo "  WARNING  terraform $$have here, CI pins $(TF_CI_VERSION)."; \
+	  echo "           These do not evaluate the same. && and || short-circuit on"; \
+	  echo "           newer versions and not on $(TF_CI_VERSION), so a green run here"; \
+	  echo "           does not prove a green pipeline. CI is the gate."; \
+	  echo ""; \
+	fi
+
 .PHONY: check
-check: fmt-check validate test lint ## Everything CI checks, in CI's order
+check: tf-version fmt-check validate test lint ## Everything CI checks, in CI's order
 
 # ---------------------------------------------------------------------------
 # Environment operations
@@ -176,4 +215,5 @@ output: ## Show outputs for ENV
 .PHONY: clean
 clean: ## Remove .terraform directories and saved plans
 	find . -type d -name '.terraform' -prune -exec rm -rf {} +
+	find . -type d -name '$(TF_VALIDATE_DIR)' -prune -exec rm -rf {} +
 	find . -type f -name 'tfplan' -delete

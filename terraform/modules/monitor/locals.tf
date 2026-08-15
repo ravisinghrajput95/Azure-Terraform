@@ -178,9 +178,13 @@ locals {
 
   # An aggregation the metric does not publish. The rule never fires.
   unsupported_aggregations = sort([
+    # try() around the index because `&&` is not guaranteed to short-circuit —
+    # on Terraform 1.9.8 the right side is evaluated even when the left is
+    # false, so a metric absent from the catalogue is indexed anyway and the
+    # whole expression fails with "Invalid index" rather than skipping the row.
     for k, a in local.alerts : "${k} (${a.aggregation} on ${a.metric_name})"
     if contains(keys(local.aks_metric_catalogue), a.metric_name)
-    && !contains(local.aks_metric_catalogue[a.metric_name].aggregations, a.aggregation)
+    && !contains(try(local.aks_metric_catalogue[a.metric_name].aggregations, []), a.aggregation)
   ])
 
   # A dimension the metric does not carry. The filter matches nothing, so the
@@ -188,9 +192,10 @@ locals {
   # more precisely targeted than an unfiltered one.
   invalid_dimensions = sort(flatten([
     for k, a in local.alerts : [
+      # try() for the same reason as unsupported_aggregations above.
       for dim_name, dim in a.dimensions : "${k} (${dim_name} on ${a.metric_name})"
       if contains(keys(local.aks_metric_catalogue), a.metric_name)
-      && !contains(local.aks_metric_catalogue[a.metric_name].dimensions, dim_name)
+      && !contains(try(local.aks_metric_catalogue[a.metric_name].dimensions, []), dim_name)
     ]
   ]))
 

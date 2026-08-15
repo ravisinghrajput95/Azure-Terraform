@@ -391,7 +391,21 @@ variable "daily_cap_reset_hour_utc" {
   default     = null
 
   validation {
-    condition     = var.daily_cap_reset_hour_utc == null || (var.daily_cap_reset_hour_utc >= 0 && var.daily_cap_reset_hour_utc <= 23)
+    # coalesce, not a bare comparison, because `||` does not reliably
+    # short-circuit here. On Terraform 1.9.8 — the version CI pins — the
+    # right-hand side is evaluated even when the left is true, so a null
+    # reaches `>=` and validation fails outright with "argument must not be
+    # null". It is not a validation failure the user can act on; it is an
+    # evaluation error that stops `terraform validate` dead.
+    #
+    # This is why qa, stage and prod could not validate: dev supplies an hour,
+    # the other three leave it null. Newer Terraform short-circuits and hides
+    # it, which is exactly how it survived — see the aks, firewall, diagnostics
+    # and private-dns modules, which already coalesce for the same reason.
+    condition = var.daily_cap_reset_hour_utc == null || (
+      coalesce(var.daily_cap_reset_hour_utc, 0) >= 0 &&
+      coalesce(var.daily_cap_reset_hour_utc, 0) <= 23
+    )
     error_message = "daily_cap_reset_hour_utc must be an hour from 0 to 23."
   }
 }

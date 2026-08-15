@@ -98,7 +98,10 @@ locals {
 
   daily_retention_too_short = sort([
     for k, p in var.vm_backup_policies : "vm/${k} (${p.retention_daily})"
-    if p.frequency == "Daily" && p.retention_daily != null && p.retention_daily < 7
+    # coalesce because `&&` is not guaranteed to short-circuit: on Terraform
+    # 1.9.8 the `< 7` is evaluated even when retention_daily is null, and a
+    # null comparison fails the whole expression instead of skipping the row.
+    if p.frequency == "Daily" && p.retention_daily != null && coalesce(p.retention_daily, 7) < 7
   ])
 
   # A weekly schedule cannot carry daily retention — there is no daily

@@ -592,7 +592,15 @@ locals {
   peak_vcpus     = local.vcpus_per_instance == null ? null : local.vcpus_per_instance * local.peak_instances * var.compute_tier_count
 
   quota_check_possible = var.subscription_vcpu_quota != null && local.peak_vcpus != null
-  quota_exceeded       = local.quota_check_possible && local.peak_vcpus > var.subscription_vcpu_quota
+
+  # coalesce because `&&` is not guaranteed to short-circuit: on Terraform
+  # 1.9.8 the comparison runs even when quota_check_possible is false, and
+  # comparing null fails the whole expression. When the check is not possible
+  # both sides coalesce to 0, so the comparison is false either way and the
+  # guard above still decides the outcome.
+  quota_exceeded = local.quota_check_possible && (
+    coalesce(local.peak_vcpus, 0) > coalesce(var.subscription_vcpu_quota, 0)
+  )
 }
 
 ################################################################################

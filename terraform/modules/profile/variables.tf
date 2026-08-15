@@ -110,7 +110,12 @@ variable "subscription_vcpu_quota" {
   default     = null
 
   validation {
-    condition     = var.subscription_vcpu_quota == null || var.subscription_vcpu_quota > 0
+    # coalesce for the same reason as monitor's daily_cap_reset_hour_utc: `||`
+    # does not reliably short-circuit, so on Terraform 1.9.8 a null reaches `>`
+    # and validation fails to evaluate rather than failing cleanly. Every
+    # environment happens to set this today, which is the only reason it has
+    # not bitten — a caller leaving it null would have hit it.
+    condition     = var.subscription_vcpu_quota == null || coalesce(var.subscription_vcpu_quota, 1) > 0
     error_message = "subscription_vcpu_quota must be a positive number, or null to disable the check."
   }
 }

@@ -36,19 +36,25 @@ locals {
     if !contains(keys(var.listeners), rule.listener_name)
   ]))
 
+  # The three filters below drop nulls with compact() BEFORE testing
+  # membership, rather than guarding with `x != null && contains(...)`.
+  # `&&` is not guaranteed to short-circuit — on Terraform 1.9.8 the
+  # contains() runs even when the name is null, and contains() rejects a
+  # null needle outright, so the module failed to evaluate at all. Removing
+  # the nulls first means nothing depends on evaluation order.
   unknown_backend_pools = sort(distinct([
-    for name, rule in var.routing_rules : rule.backend_pool_name
-    if rule.backend_pool_name != null && !contains(keys(var.backend_pools), rule.backend_pool_name)
+    for ref in compact([for rule in values(var.routing_rules) : rule.backend_pool_name]) : ref
+    if !contains(keys(var.backend_pools), ref)
   ]))
 
   unknown_http_settings = sort(distinct([
-    for name, rule in var.routing_rules : rule.backend_http_settings_name
-    if rule.backend_http_settings_name != null && !contains(keys(var.backend_http_settings), rule.backend_http_settings_name)
+    for ref in compact([for rule in values(var.routing_rules) : rule.backend_http_settings_name]) : ref
+    if !contains(keys(var.backend_http_settings), ref)
   ]))
 
   unknown_probes = sort(distinct([
-    for name, settings in var.backend_http_settings : settings.probe_name
-    if settings.probe_name != null && !contains(keys(var.probes), settings.probe_name)
+    for ref in compact([for settings in values(var.backend_http_settings) : settings.probe_name]) : ref
+    if !contains(keys(var.probes), ref)
   ]))
 
   unknown_redirect_targets = sort(distinct([
