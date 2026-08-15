@@ -112,6 +112,19 @@ make plan ENV=dev       # needs credentials
 test the preconditions, not the provider: a test asserting that
 `azurerm_storage_account` sets a name is testing HashiCorp's code.
 
+**That is 8 of the 22 built modules, not all of them.** Those 8 hold 58
+preconditions between them. The other 14 modules hold **51 preconditions with
+no test at all** — among them `redis`, which refuses a cache that Azure creates
+successfully and then leaves unreachable by every client. That is exactly the
+failure class this repository is built around, and there it is guarded by the
+precondition alone.
+
+*Tested:* `aks`, `application-gateway`, `firewall`, `monitor`, `naming`,
+`profile`, `recovery-services`, `tags`.
+*No tests:* `bastion`, `diagnostics`, `key-vault`, `load-balancer`,
+`log-analytics`, `managed-identity`, `networking`, `nsg`, `private-dns`,
+`redis`, `resource-group`, `route-table`, `sql`, `storage`.
+
 | Document | Contents |
 |---|---|
 | [`scripts/README.md`](scripts/README.md) | Preflight, ingestion, cluster access and drift checks — each one exists because its absence caused a real failure |
