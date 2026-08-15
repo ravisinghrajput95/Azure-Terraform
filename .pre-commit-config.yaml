@@ -48,3 +48,21 @@ repos:
       - id: terraform_trivy
         args:
           - --args=--severity=HIGH,CRITICAL
+
+  # ShellCheck. The scripts in scripts/ are the checks that answer what
+  # `terraform plan` cannot, so a defect in one is a defect in the verification
+  # itself — and every defect found in them so far was found by running them,
+  # not by reading them. This is the cheapest of the two.
+  #
+  # shellcheck-py rather than koalaman/shellcheck-precommit: the latter runs in
+  # Docker, which is slow enough on a cold image to get the hook bypassed. This
+  # one is a wheel with the binary inside it, and 0.11.0.1 wraps the same
+  # ShellCheck 0.11.0 that CI pins.
+  #
+  # No args: check selection lives in .shellcheckrc so this hook, `make lint`
+  # and CI cannot drift apart. Files are selected by pre-commit's `shell` type,
+  # which reads the shebang — a script without a .sh extension is still caught.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck

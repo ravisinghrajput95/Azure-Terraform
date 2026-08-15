@@ -17,15 +17,25 @@
 
 name: Terraform CI
 
+# scripts/** and .shellcheckrc are in these filters deliberately. Without them
+# the shellcheck job below exists and never runs: a pull request touching only
+# scripts/ would not start this workflow at all, and the branch would go green
+# on a check that was never executed. That is a worse failure than having no
+# check, because the tick mark is still there.
 on:
   pull_request:
     paths:
       - "terraform/**"
+      - "scripts/**"
+      - ".shellcheckrc"
       - ".github/workflows/terraform-ci.yml"
   push:
     branches: [main]
     paths:
       - "terraform/**"
+      - "scripts/**"
+      - ".shellcheckrc"
+      - ".github/workflows/terraform-ci.yml"
   workflow_dispatch:
 
 # OIDC needs id-token: write. Everything else is least privilege — the workflow
@@ -44,6 +54,13 @@ env:
   TF_IN_AUTOMATION: "true"
   # Terraform's own colour codes make log output unreadable in Actions.
   TF_CLI_ARGS: "-no-color"
+  # Pinned rather than using the runner's preinstalled ShellCheck, which is
+  # 0.9.0 on ubuntu-24.04. The pre-commit hook is 0.11.0, and 0.10 and 0.11
+  # both added checks — so an unpinned CI would be more permissive than the
+  # local hook, and a developer would see CI pass what their own commit hook
+  # rejected. Keep this in step with the shellcheck-py rev in
+  # .pre-commit-config.yaml.
+  SHELLCHECK_VERSION: "0.11.0"
 
 jobs:
   ##############################################################################
@@ -156,6 +173,103 @@ jobs:
             echo "::endgroup::"
           done
           exit $failed
+
+  ##############################################################################
+  # ShellCheck
+  #
+  # scripts/ holds the four checks that answer what `terraform plan` cannot, so
+  # a defect in one of them is a defect in the verification itself. Running
+  # those scripts against the live subscription found four such defects that
+  # reading them had not — including `A && B || C` used as if it were
+  # if-then-else, where the C branch set fail=1 and a printf returning non-zero
+  # would have marked a passing check as failed.
+  #
+  # This job does not `needs: validate`. It shares no tooling with Terraform,
+  # and gating a shell lint behind `terraform validate` only makes a scripts-
+  # only change wait on an unrelated result.
+  ##############################################################################
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # From the upstream release rather than the runner's preinstalled copy or
+      # a third-party action, so the version is the one this file pins.
+      - name: Install ShellCheck
+        run: |
+          set -euo pipefail
+          base="https://github.com/koalaman/shellcheck/releases/download"
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "${base}/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+            | tar -xJ -C "$HOME/.local/bin" --strip-components=1 \
+                "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Check selection lives in .shellcheckrc — the same file the pre-commit
+      # hook and `make lint` read. There are deliberately no flags here.
+      #
+      # Two things are asserted rather than assumed, because both would fail
+      # silently and leave a green tick behind:
+      #
+      #   - the version actually on PATH. The runner ships ShellCheck 0.9.0; if
+      #     the install step above ever stops taking effect, CI would quietly
+      #     fall back to it and enforce a weaker check set than the commit hook.
+      #   - a non-empty file list. Discovery is by shebang as well as by
+      #     extension, so a script added without a .sh suffix is still linted —
+      #     and a linter reporting success over a file set it never built is
+      #     exactly the failure shape this repository exists to catch.
+      #
+      # It also refuses a file that this job would lint and the commit hook
+      # would not. pre-commit's `shell` type is satisfied by a .sh suffix, or
+      # by a shebang on an executable file — a shebang on a non-executable file
+      # is not enough. Without this check the two would disagree silently, in
+      # the direction where a developer's hook passes and CI fails.
+      - name: ShellCheck every shell script
+        run: |
+          set -euo pipefail
+
+          have=$(shellcheck --version | awk '/^version:/ {print $2}')
+          if [ "$have" != "$SHELLCHECK_VERSION" ]; then
+            echo "::error::ShellCheck $have is on PATH, expected $SHELLCHECK_VERSION"
+            exit 1
+          fi
+          echo "ShellCheck $have"
+
+          files=$( { git ls-files -- '*.sh'
+                     git ls-files | while read -r f; do
+                       if [ -f "$f" ] && head -n1 "$f" 2>/dev/null \
+                            | grep -qE '^#!.*(bash|/sh$|env sh$)'; then
+                         printf '%s\n' "$f"
+                       fi
+                     done
+                   } | sort -u )
+
+          if [ -z "$files" ]; then
+            echo "::error::no shell scripts found — ShellCheck would have passed over nothing"
+            exit 1
+          fi
+          echo "$files" | sed 's/^/  /'
+
+          unhookable=$( { echo "$files" | grep -v '\.sh$' || true; } | while read -r f; do
+                          if [ -n "$f" ] && [ ! -x "$f" ]; then printf '%s\n' "$f"; fi
+                        done )
+          if [ -n "$unhookable" ]; then
+            echo "$unhookable" | while read -r f; do
+              echo "::error file=${f}::neither a .sh suffix nor the executable bit — the pre-commit shellcheck hook will skip this file silently while CI lints it. chmod +x it, or give it a .sh suffix."
+            done
+            exit 1
+          fi
+
+          # Human-readable output first, then the same findings again as
+          # annotations so they land on the diff rather than in a log nobody
+          # opens. ShellCheck exits non-zero for anything at or above the
+          # severity floor in .shellcheckrc.
+          if ! echo "$files" | xargs shellcheck; then
+            echo "$files" | xargs shellcheck --format=gcc \
+              | sed -E 's|^([^:]+):([0-9]+):([0-9]+): [a-z]+: (.*)$|::error file=\1,line=\2,col=\3::\4|'
+            exit 1
+          fi
 
   ##############################################################################
   # Security scanning

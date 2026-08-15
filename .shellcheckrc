@@ -1,0 +1,59 @@
+# ShellCheck configuration.
+#
+# This file exists so that the three places shell gets linted — the pre-commit
+# hook, `make lint`, and the CI job — cannot silently disagree about what
+# "clean" means. None of them passes check-selection flags; they all read this.
+#
+# A linter whose local and CI configurations differ is worse than no linter,
+# because a developer whose commit was green then fails in CI learns to
+# distrust the local one and stops running it.
+
+# Resolve `source`d files relative to the sourcing script, not the caller's
+# working directory. Nothing sources anything today; this is here so that the
+# first script which does is not reported as an unresolvable source.
+source-path=SCRIPTDIR
+
+# Everything at severity `style` and above. This is ShellCheck's own default,
+# written out because a default that is relied upon should be visible.
+severity=style
+
+# Optional checks, off by default upstream, enabled here. Each one catches a
+# class of bug rather than a matter of taste, and each is at zero findings
+# across the repository today — so they enforce the current state rather than
+# leaving a backlog behind them.
+#
+#   SC2244  [ "$x" ]  is true for the string "0" and false for the empty
+#           string. It reads like a boolean test and is not one; -n says it.
+#   SC2154  a referenced-but-never-assigned variable, which is nearly always
+#           a typo in the name. `set -u` catches it at runtime, on the branch
+#           that happens to be taken; this catches it before that.
+#   SC2230  `which` is an external command with inconsistent exit behaviour
+#           across systems. `command -v` is a builtin and specified by POSIX.
+#   SC2248  unquoted expansion, even where the value looks safe today. The
+#           value stops being safe when someone changes what fills it.
+enable=avoid-nullary-conditions
+enable=check-unassigned-uppercase
+enable=deprecate-which
+enable=quote-safe-variables
+
+# Deliberately NOT enabled, recorded so the omission reads as a decision:
+#
+#   check-extra-masked-returns (SC2312)  4 findings. Under `set -euo pipefail`
+#           a failing command inside `$( )` does not stop the script, so its
+#           empty output is consumed as if it were an answer. That is exactly
+#           the failure class this repository is built around, and one of the
+#           four is real: preflight.sh builds a SQL admin password from
+#           `$(openssl rand ...)`, and if openssl is absent the create fails
+#           and the script reports Azure SQL as RESTRICTED in the region.
+#           ARCHITECTURE.md §6a moved the whole platform on that signal.
+#           Enabling this check is a script change, not a lint change, so it
+#           is tracked separately rather than turned on with suppressions.
+#
+#   add-default-case (SC2249)  1 finding, and it is a false one: the
+#           spending-limit case warns on `On` and correctly says nothing for
+#           `Off`. A default branch there would be noise.
+#
+#   require-double-brackets (SC2292), require-variable-braces (SC2250)
+#           23 and 89 findings, all matters of taste. Enforcing a preference
+#           at the same severity as a bug teaches people to skim the output,
+#           and the whole value of this linter is that its output gets read.

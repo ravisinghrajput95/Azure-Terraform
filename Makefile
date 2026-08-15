@@ -53,13 +53,55 @@ test: ## Run terraform test for every module that has tests
 	exit $$failed
 
 .PHONY: lint
-lint: ## TFLint every module and environment
+lint: lint-tf lint-sh ## Lint everything — Terraform and shell
+
+.PHONY: lint-tf
+lint-tf: ## TFLint every module and environment
 	@set -euo pipefail; \
 	tflint --init >/dev/null; \
 	for dir in terraform/modules/*/ terraform/environments/*/; do \
 	  echo "==> $$dir"; \
 	  tflint --chdir=$$dir --config=$$(pwd)/.tflint.hcl; \
 	done
+
+# Check selection is in .shellcheckrc, not here — see that file for why.
+#
+# Discovery is by shebang as well as by extension, because a script added
+# without a .sh suffix would otherwise be skipped silently, and the linter
+# would go on reporting success over a file it never opened. For the same
+# reason an empty file list is a failure rather than a no-op.
+#
+# The executable-bit check exists because this target and the pre-commit hook
+# do NOT discover files the same way, and the difference is invisible.
+# pre-commit's `shell` type is satisfied by a .sh suffix, or by a shebang on a
+# file that is executable — a shebang alone is not enough. So a script with
+# neither the suffix nor the bit is linted here and in CI, and skipped by the
+# commit hook without saying so. Rather than let the two drift, the condition
+# is refused outright.
+.PHONY: lint-sh
+lint-sh: ## ShellCheck every shell script in the repository
+	@set -euo pipefail; \
+	shellcheck --version | awk '/^version:/ {print "==> shellcheck " $$2}'; \
+	files=$$( { git ls-files -- '*.sh'; \
+	  git ls-files | while read -r f; do \
+	    if [ -f "$$f" ] && head -n1 "$$f" 2>/dev/null | grep -qE '^#!.*(bash|/sh$$|env sh$$)'; then printf '%s\n' "$$f"; fi; \
+	  done; } | sort -u ); \
+	if [ -z "$$files" ]; then \
+	  echo "no shell scripts found — shellcheck would have passed over nothing" >&2; \
+	  exit 1; \
+	fi; \
+	echo "$$files" | sed 's/^/    /'; \
+	unhookable=$$( { echo "$$files" | grep -v '\.sh$$' || true; } | while read -r f; do \
+	  if [ -n "$$f" ] && [ ! -x "$$f" ]; then printf '%s\n' "$$f"; fi; \
+	done ); \
+	if [ -n "$$unhookable" ]; then \
+	  echo "$$unhookable" | sed 's/^/    /' >&2; \
+	  echo "the files above have neither a .sh suffix nor the executable bit, so the" >&2; \
+	  echo "pre-commit hook will skip them silently while this target lints them." >&2; \
+	  echo "chmod +x them, or give them a .sh suffix." >&2; \
+	  exit 1; \
+	fi; \
+	echo "$$files" | xargs shellcheck
 
 .PHONY: security
 security: ## Trivy misconfiguration scan

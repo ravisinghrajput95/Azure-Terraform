@@ -108,6 +108,41 @@ are gitignored and machine-specific.
 
 ---
 
+## Linting
+
+These scripts are the checks that answer what `terraform plan` cannot, so a
+defect in one of them is a defect in the verification itself. They are linted
+by ShellCheck in three places, all reading the same `.shellcheckrc` at the
+repository root:
+
+| Where | Command |
+|---|---|
+| Commit time | `pre-commit install`, then automatically |
+| Locally | `make lint-sh`, or `make lint` for Terraform and shell together |
+| CI | the `ShellCheck` job in `.github/workflows/terraform-ci.yml` |
+
+No call site passes check-selection flags. They all read `.shellcheckrc`,
+because a linter whose local and CI configurations differ is worse than no
+linter: a developer whose commit was green and whose CI is red learns to
+distrust the local one and stops running it. For the same reason CI pins
+ShellCheck 0.11.0 and asserts the version on `PATH` before linting — the GitHub
+runner image ships 0.9.0, which would silently enforce a weaker check set than
+the commit hook.
+
+`.shellcheckrc` enables four optional checks beyond ShellCheck's defaults and
+records, in the file, why the opinionated ones are left off and why
+`check-extra-masked-returns` is tracked separately rather than suppressed.
+
+**If you add a script, give it a `.sh` suffix or `chmod +x` it.** This is not
+cosmetic. `make lint-sh` and CI discover scripts by shebang as well as by
+extension, but pre-commit's `shell` file type is satisfied only by a `.sh`
+suffix or by a shebang on an *executable* file — a shebang on its own is not
+enough. A script with neither would be linted by CI and skipped by the commit
+hook without either of them saying so, so `make lint-sh` and CI both refuse
+that state outright rather than let the two quietly disagree.
+
+---
+
 ## Notes
 
 Every script was **run against the live subscription** before being committed,

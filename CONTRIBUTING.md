@@ -83,6 +83,29 @@ and was never applied, its README says so. If an alert has never fired, that is
 recorded. Overstating verification is worse than having none, because it stops
 anyone from checking.
 
+### A shell script needs a `.sh` suffix or the executable bit
+
+Shell is linted by ShellCheck in three places — the pre-commit hook, `make
+lint-sh`, and the `ShellCheck` job in CI — all reading the same `.shellcheckrc`
+so they cannot disagree about what "clean" means.
+
+They do not discover files identically, and that is why this rule exists.
+`make lint-sh` and CI find scripts by shebang as well as by extension.
+pre-commit's `shell` file type does not: it is satisfied by a `.sh` suffix, or
+by a shebang on a file that is **executable**, and a shebang on its own is not
+enough. A script with neither the suffix nor the bit is therefore linted by CI
+and skipped by the commit hook, with neither of them mentioning it — you find
+out when CI fails on a file your own hook waved through, which is precisely how
+people learn to stop trusting the local hook.
+
+`make lint-sh` and CI both refuse that state rather than let the two drift. An
+empty file list is a failure too: a linter reporting success over a file set it
+never built is the same problem one level up.
+
+CI pins ShellCheck and asserts the version on `PATH` before linting, because
+the GitHub runner image ships an older one that would quietly enforce a weaker
+check set than the commit hook.
+
 ---
 
 ## Module layout
