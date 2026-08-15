@@ -18,6 +18,25 @@
 #       no network access at all.
 ################################################################################
 
+# AZU-0012 — "No network rules defined and default action allows access."
+#
+# False positive, and the reason is worth keeping because it will recur on
+# every dynamic block in this repository. Trivy evaluates modules statically
+# with no variable values, so it cannot resolve the for_each on the
+# network_rules block below and concludes the block is absent. Its rule then
+# reports the Azure API default, which is Allow.
+#
+# What the configuration actually does:
+#   - network_rules_default_action defaults to "Deny", and every caller passes
+#     "Deny" explicitly;
+#   - a precondition rejects "Allow" whenever IP or subnet rules are set, which
+#     is the case the rule exists to catch;
+#   - the block is omitted only when public_network_access_enabled is false,
+#     where network rules govern nothing because there is no public endpoint.
+#
+# Scoped to this resource rather than added to a .trivyignore, so a genuinely
+# permissive storage account added later is still reported.
+#trivy:ignore:AZU-0012
 resource "azurerm_storage_account" "this" {
   name                = var.name
   resource_group_name = var.resource_group_name

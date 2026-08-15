@@ -16,6 +16,22 @@
 # enable_rbac_authorization is deprecated in azurerm 4.x.
 ################################################################################
 
+# AZU-0013 — "Vault network ACL does not block access by default."
+#
+# False positive, same cause as AZU-0012 in the storage module. Trivy evaluates
+# this module statically with no variable values, cannot resolve the for_each
+# on the network_acls block below, and therefore reports the Azure API default
+# of Allow for a block it never saw.
+#
+# What the configuration actually does:
+#   - network_acls_default_action defaults to "Deny";
+#   - a precondition rejects "Allow" whenever IP or subnet rules are set;
+#   - the block is omitted only when public network access is off, where the
+#     ACL governs nothing because there is no public endpoint to govern.
+#
+# Scoped to this resource rather than added to a .trivyignore, so a genuinely
+# permissive vault added later is still reported.
+#trivy:ignore:AZU-0013
 resource "azurerm_key_vault" "this" {
   name                = var.name
   resource_group_name = var.resource_group_name

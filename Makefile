@@ -103,9 +103,20 @@ lint-sh: ## ShellCheck every shell script in the repository
 	fi; \
 	echo "$$files" | xargs shellcheck
 
+# `trivy config` takes exactly ONE target. Passing two made it exit 2 on a
+# usage error every time, which looks like a scan that ran and failed — so this
+# target had never actually scanned anything. Both paths are now looped, and
+# bootstrap/ is included deliberately: CI scans terraform/ only, so the state
+# backend is the one thing no automated scan was looking at.
 .PHONY: security
 security: ## Trivy misconfiguration scan
-	trivy config --exit-code 1 --severity HIGH,CRITICAL terraform/ bootstrap/
+	@set -euo pipefail; \
+	failed=0; \
+	for dir in terraform/ bootstrap/; do \
+	  echo "==> $$dir"; \
+	  trivy config --exit-code 1 --severity HIGH,CRITICAL "$$dir" || failed=1; \
+	done; \
+	exit $$failed
 
 .PHONY: check
 check: fmt-check validate test lint ## Everything CI checks, in CI's order
