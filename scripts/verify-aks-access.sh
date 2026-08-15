@@ -62,14 +62,16 @@ echo "Credentials"
 az aks get-credentials -g "$RG" -n "$CLUSTER" --file "$KUBECONFIG_FILE" --overwrite-existing >/dev/null 2>&1
 # -l azurecli reuses the existing az session; without it kubelogin defaults to
 # devicecode and blocks on an interactive prompt.
-kubelogin convert-kubeconfig -l azurecli --kubeconfig "$KUBECONFIG_FILE" >/dev/null 2>&1 \
-  && ok "kubeconfig converted to azurecli mode (no device-code prompt)" \
-  || bad "kubelogin convert-kubeconfig failed"
+if kubelogin convert-kubeconfig -l azurecli --kubeconfig "$KUBECONFIG_FILE" >/dev/null 2>&1; then
+  ok "kubeconfig converted to azurecli mode (no device-code prompt)"
+else
+  bad "kubelogin convert-kubeconfig failed"
+fi
 
 echo
 echo "Identity as the API server sees it"
 if who=$(kubectl auth whoami 2>/dev/null); then
-  echo "$who" | sed 's/^/  /'
+  while IFS= read -r l; do printf '  %s\n' "$l"; done <<<"$who"
   echo "  If an object ID sits in the cluster's admin GROUP list, look for it in"
   echo "  Groups above. If it only appears as Username, that binding matches nobody."
 else
@@ -84,7 +86,7 @@ echo "        even for a full admin. Test verbs instead."
 for q in "get nodes" "get secrets --all-namespaces" "create deployments --namespace default" "delete namespaces"; do
   # shellcheck disable=SC2086
   r=$(kubectl auth can-i $q 2>/dev/null | tail -1 || echo "error")
-  [ "$r" = "yes" ] && ok "can-i $q" || bad "can-i $q -> $r"
+  if [ "$r" = "yes" ]; then ok "can-i $q"; else bad "can-i $q -> $r"; fi
 done
 
 echo
