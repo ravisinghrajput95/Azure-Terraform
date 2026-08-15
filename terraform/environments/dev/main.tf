@@ -62,6 +62,27 @@ module "profile" {
 }
 
 ################################################################################
+# Naming derived once
+#
+# These were literals until 2026-08-15 — "snet-aks-dev-cus", "nsg-aks-dev-cus",
+# and a bastion NSG that read "nsg-bastion-dev-eus" while this environment runs
+# in Central US. The eus was wrong from the day the platform moved regions
+# (ARCHITECTURE.md §6a) and nothing caught it, because a resource name is a
+# string and Azure will accept any string.
+#
+# qa, stage and prod derive them. dev now does too, so a copy between
+# environments cannot carry the wrong environment or region with it.
+################################################################################
+
+locals {
+  loc = module.naming.location_short
+
+  aks_subnet_name  = "snet-aks-${local.environment}-${local.loc}"
+  aks_nsg_name     = "nsg-aks-${local.environment}-${local.loc}"
+  bastion_nsg_name = "nsg-bastion-${local.environment}-${local.loc}"
+}
+
+################################################################################
 # Phase 1 — resource groups
 #
 # One group per lifecycle scope: net, sec, data, app, mon. See
@@ -202,7 +223,7 @@ module "networking" {
     # only — pods draw from pod_cidr, routed inside the cluster. Classic CNI
     # would consume one subnet address per pod and cap the cluster at the
     # subnet size.
-    "snet-aks-dev-cus" = {
+    (local.aks_subnet_name) = {
       cidr                  = "10.10.16.0/20"
       associate_nat_gateway = true
     }
@@ -289,7 +310,7 @@ module "route_table" {
     "AzureFirewallManagementSubnet",
     "GatewaySubnet",
     "RouteServerSubnet",
-    "snet-agw-${local.environment}-${module.naming.location_short}",
+    "snet-agw-${local.environment}-${local.loc}",
   ]
 
   route_tables = {
@@ -795,7 +816,7 @@ module "aks" {
     }
   } : {}
 
-  vnet_subnet_id = module.networking.subnet_ids["snet-aks-dev-cus"]
+  vnet_subnet_id = module.networking.subnet_ids[local.aks_subnet_name]
 
   # Azure CNI Overlay. pod_cidr and service_cidr are routed inside the cluster
   # only and must not overlap 10.10.0.0/16 or anything peered to it.

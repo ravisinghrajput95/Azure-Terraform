@@ -25,7 +25,7 @@ locals {
   db_subnet      = local.subnet_names["db"]
   pep_subnet     = local.subnet_names["pep"]
   mgmt_subnet    = local.subnet_names["mgmt"]
-  aks_subnet     = "snet-aks-dev-cus"
+  aks_subnet     = local.aks_subnet_name
   bastion_subnet = "AzureBastionSubnet"
 
   # Ingress source for the application tier depends on what fronts it. With
@@ -217,7 +217,7 @@ locals {
     # for its managed load balancer inside the node resource group; adding
     # overlapping rules here fights that reconciliation.
     ############################################################################
-    "nsg-aks-dev-cus" = {
+    (local.aks_nsg_name) = {
       subnet_id = module.networking.subnet_ids[local.aks_subnet]
       rules = {
         "Allow-LB-Probe"   = local.allow_lb_probe
@@ -236,7 +236,7 @@ locals {
     # Written now, before Bastion exists, so module 12 deploys into a subnet
     # that is already correct.
     ############################################################################
-    "nsg-bastion-dev-eus" = {
+    (local.bastion_nsg_name) = {
       subnet_id = module.networking.subnet_ids[local.bastion_subnet]
       rules = {
         "Allow-HTTPS-Inbound" = {
