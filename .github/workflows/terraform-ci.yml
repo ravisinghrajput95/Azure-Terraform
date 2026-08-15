@@ -326,6 +326,35 @@ jobs:
           sarif_file: checkov.sarif
           category: checkov
 
+      # Per-directory scan, which is NOT what the SARIF step above does.
+      #
+      # `scan-ref: terraform/` walks the tree, and a tree scan and a per-module
+      # scan do not agree: terraform/ reported clean while terraform/modules/aks
+      # alone reported a CRITICAL (AZU-0041). The pre-commit hook works per
+      # directory, so it failed on a finding this job had never seen — CI was
+      # the weaker of the two. A module is the unit that gets reused, so a
+      # module has to be clean on its own.
+      #
+      # bootstrap/ is scanned here and not above: scan-ref never included it,
+      # so the state backend had no automated scan at all.
+      - name: Trivy — per-directory scan
+        run: |
+          set -uo pipefail
+          failed=0
+          for dir in terraform/modules/*/ terraform/environments/*/ bootstrap/; do
+            [ -n "$(find "$dir" -maxdepth 1 -name '*.tf' -print -quit)" ] || continue
+            if ! out=$(trivy config --exit-code 1 --severity HIGH,CRITICAL "$dir" 2>/dev/null); then
+              echo "::group::trivy $dir"
+              echo "$out"
+              echo "::endgroup::"
+              echo "$out" | grep -E '^AZU-|^AVD-' | while read -r line; do
+                echo "::error file=${dir}::${line}"
+              done
+              failed=1
+            fi
+          done
+          exit $failed
+
       # Blocks only on CRITICAL. HIGH and below are reported for triage —
       # a scanner that fails the build on every advisory gets muted, and a
       # muted scanner protects nothing.

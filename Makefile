@@ -32,14 +32,21 @@ fmt: ## Rewrite all Terraform to canonical format
 fmt-check: ## Fail if anything is unformatted (what CI runs)
 	terraform fmt -check -recursive terraform/ bootstrap/
 
+# Failures are collected rather than fatal, matching the CI job. Stopping at
+# the first one means a change touching five modules reports the first break,
+# gets fixed, reports the second, and so on — while CI, which does collect,
+# shows all five at once. The two must agree or `make check` stops predicting
+# the pipeline, which is the only reason this target exists.
 .PHONY: validate
 validate: ## terraform validate every module and environment
-	@set -euo pipefail; \
+	@set -uo pipefail; \
+	failed=0; \
 	for dir in terraform/modules/*/ terraform/environments/*/ bootstrap/; do \
-	  [ -n "$$(ls $$dir*.tf 2>/dev/null)" ] || continue; \
+	  [ -n "$$(find $$dir -maxdepth 1 -name '*.tf' -print -quit)" ] || continue; \
 	  echo "==> $$dir"; \
-	  ( cd $$dir && terraform init -backend=false -input=false >/dev/null && terraform validate ); \
-	done
+	  ( cd $$dir && terraform init -backend=false -input=false >/dev/null && terraform validate ) || failed=1; \
+	done; \
+	exit $$failed
 
 .PHONY: test
 test: ## Run terraform test for every module that has tests
@@ -55,14 +62,18 @@ test: ## Run terraform test for every module that has tests
 .PHONY: lint
 lint: lint-tf lint-sh ## Lint everything — Terraform and shell
 
+# Collects failures for the same reason validate does.
 .PHONY: lint-tf
 lint-tf: ## TFLint every module and environment
-	@set -euo pipefail; \
+	@set -uo pipefail; \
+	command -v tflint >/dev/null || { echo "tflint is not installed — see terraform/README.md" >&2; exit 1; }; \
 	tflint --init >/dev/null; \
+	failed=0; \
 	for dir in terraform/modules/*/ terraform/environments/*/; do \
 	  echo "==> $$dir"; \
-	  tflint --chdir=$$dir --config=$$(pwd)/.tflint.hcl; \
-	done
+	  tflint --chdir=$$dir --config=$$(pwd)/.tflint.hcl || failed=1; \
+	done; \
+	exit $$failed
 
 # Check selection is in .shellcheckrc, not here — see that file for why.
 #
@@ -105,17 +116,27 @@ lint-sh: ## ShellCheck every shell script in the repository
 
 # `trivy config` takes exactly ONE target. Passing two made it exit 2 on a
 # usage error every time, which looks like a scan that ran and failed — so this
-# target had never actually scanned anything. Both paths are now looped, and
-# bootstrap/ is included deliberately: CI scans terraform/ only, so the state
-# backend is the one thing no automated scan was looking at.
+# target had never actually scanned anything.
+#
+# It now scans each directory SEPARATELY rather than passing the tree, because
+# the two do not give the same answer. Scanning terraform/ as a tree reported
+# nothing while scanning terraform/modules/aks alone reported a CRITICAL, which
+# is why the pre-commit hook — which works per directory — failed on a finding
+# this target called clean. A module is what gets reused, so a module is the
+# unit that has to be clean on its own.
+#
+# bootstrap/ is included deliberately: CI's scan-ref is terraform/, so the
+# state backend is the one thing no automated scan was ever looking at.
 .PHONY: security
-security: ## Trivy misconfiguration scan
-	@set -euo pipefail; \
+security: ## Trivy misconfiguration scan, per directory
+	@set -uo pipefail; \
 	failed=0; \
-	for dir in terraform/ bootstrap/; do \
-	  echo "==> $$dir"; \
-	  trivy config --exit-code 1 --severity HIGH,CRITICAL "$$dir" || failed=1; \
+	for dir in terraform/modules/*/ terraform/environments/*/ bootstrap/; do \
+	  [ -n "$$(find $$dir -maxdepth 1 -name '*.tf' -print -quit)" ] || continue; \
+	  out=$$(trivy config --exit-code 1 --severity HIGH,CRITICAL "$$dir" 2>/dev/null) || { \
+	    echo "==> $$dir"; echo "$$out" | grep -E '^AZU-|^AVD-' | sed 's/^/    /'; failed=1; }; \
 	done; \
+	if [ $$failed -eq 0 ]; then echo "trivy: clean at HIGH,CRITICAL in every directory"; fi; \
 	exit $$failed
 
 .PHONY: check

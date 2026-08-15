@@ -31,6 +31,29 @@ resource "azurerm_resource_group" "tfstate" {
 # sensitive but still had to persist.
 ################################################################################
 
+# AZU-0012 — "No network rules defined and default action allows access."
+#
+# TRUE, unlike the two occurrences of this rule in terraform/modules, which are
+# artefacts of Trivy not resolving a dynamic block. There is genuinely no
+# network rule here: this account is reachable from any address on the internet
+# and gated by Entra ID alone, because shared_access_key_enabled is false.
+#
+# Accepted, with the reasoning in SECURITY.md, because both remedies cost more
+# than they buy here: an IP allowlist breaks the CI plan job, whose GitHub-
+# hosted runners change address per run, and a private endpoint needs a VNet
+# that outlives every environment plus self-hosted runners to reach it. Neither
+# fits a repository whose environments are torn down to nothing.
+#
+# Review by 2027-02-15. That date is a commitment, NOT a mechanism, and the
+# difference was measured rather than assumed: Trivy 0.72.0 accepts
+# `#trivy:ignore:AZU-0012 exp:<date>` here and suppresses the finding just the
+# same once the date has passed — an expiry of 2020-01-01 still suppressed it.
+# A `.trivyignore.yaml` with `expiredAt` did not suppress anything at all, at
+# any of three path spellings. So there is no expiring-ignore available in this
+# position, and writing `exp:` would have looked like a control that re-raises
+# this finding on its own when nothing does. Deleting these two lines is the
+# only thing that brings it back.
+#trivy:ignore:AZU-0012
 resource "azurerm_storage_account" "tfstate" {
   name                     = var.storage_account_name
   resource_group_name      = azurerm_resource_group.tfstate.name

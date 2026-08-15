@@ -9,6 +9,21 @@
 # network_policy is not optional in this module.
 ################################################################################
 
+# AZU-0041 — "Cluster does not limit API access to specific IP addresses."
+#
+# False positive. Trivy evaluates this module with no variable values, so it
+# cannot resolve the ternary on api_server_access_profile.authorized_ip_ranges
+# below and reads the allowlist as unset. The state it is warning about — a
+# public API server with an empty allowlist — is unreachable: locals.tf sets
+# api_server_open_to_internet for exactly that combination and a precondition
+# rejects it at plan time, before any Azure call. A private cluster passes null
+# deliberately, because there is no public endpoint for an allowlist to narrow.
+#
+# Worth knowing that this finding depends on where the scan starts. Scanning
+# terraform/ as a tree reports nothing; scanning this module alone reports it,
+# which is why the pre-commit hook saw it and `make security` did not. CI scans
+# the tree, so CI had never seen it either.
+#trivy:ignore:AZU-0041
 resource "azurerm_kubernetes_cluster" "this" {
   name                       = var.name
   resource_group_name        = var.resource_group_name
@@ -49,6 +64,19 @@ resource "azurerm_kubernetes_cluster" "this" {
   ##############################################################################
 
   local_account_disabled = var.local_account_disabled
+
+  # Kubernetes RBAC — the authorization mode inside the cluster, distinct from
+  # azure_rbac_enabled below, which decides whether Entra ID is consulted for
+  # those decisions. It is not a variable because there is no environment in
+  # which turning it off is correct: without it every authenticated principal
+  # is authorized for everything, and the namespace boundary that §6b moved the
+  # tier separation onto stops existing.
+  #
+  # Set explicitly rather than left to the provider default of true. A silent
+  # default is a control nobody can see: it does not appear in the plan, and
+  # any static scan reading this file concludes the cluster has no RBAC — which
+  # is exactly what Trivy's AZU-0042 concluded here before this line existed.
+  role_based_access_control_enabled = true
 
   dynamic "azure_active_directory_role_based_access_control" {
     for_each = length(var.entra_admin_group_object_ids) > 0 ? [1] : []

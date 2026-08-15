@@ -105,11 +105,32 @@ Applications authenticate with the tier's user-assigned managed identity.
 
 *If* a SQL login is later required for a legacy component, the fallback is a
 `random_password` written to Key Vault — but note this **stores the password in
-Terraform state in plaintext**. State is therefore treated as a secret: the
-backend storage account gets its own private endpoint, RBAC-only access, and
-infrastructure encryption. On recent Terraform + azurerm, write-only arguments
-can keep such values out of state entirely; we will verify support for the
-specific resource before relying on it rather than assuming.
+Terraform state in plaintext**. State is therefore treated as a secret.
+
+> **Corrected 2026-08-15.** This paragraph used to say the backend storage
+> account "gets its own private endpoint, RBAC-only access, and infrastructure
+> encryption". **One of those three is built.** `bootstrap/main.tf` sets
+> `shared_access_key_enabled = false`, so access is RBAC-only and the 88-character
+> key described in the README is gone. There is **no private endpoint, no
+> network rule, and no infrastructure encryption**: the state account is
+> reachable from any address on the internet and is gated by Entra ID alone.
+>
+> That is a deliberate position now that it has been looked at, not an
+> oversight left standing. An IP allowlist would break the CI plan job, which
+> runs on GitHub-hosted runners with addresses that change per run; a private
+> endpoint would require a VNet that outlives every environment and
+> self-hosted runners to reach it. Both are the wrong shape for a repository
+> whose environments are torn down to zero. It is recorded as an accepted
+> weakness in SECURITY.md rather than asserted as a control that exists.
+>
+> `infrastructure_encryption_enabled` is **create-only**. Adding it to the
+> existing account would force replacement — destroying every environment's
+> state — so it cannot be adopted without a migration, and is not a one-line
+> change.
+
+On recent Terraform + azurerm, write-only arguments can keep such values out of
+state entirely; we will verify support for the specific resource before relying
+on it rather than assuming.
 
 ### 1.6 Subnets as discrete resources — never inline
 
