@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1660 1060" width="1660" height="1060" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+  <title>Canonical architecture across dev, qa, stage and prod</title>
+  <desc>One shape across all four environments. Users reach an Application Gateway WAF v2, absent in dev, which fronts an AKS cluster on Azure CNI Overlay. Data services are reached only through private endpoints. Egress takes one of two paths chosen per environment: a NAT Gateway for dev and qa, uninspected; or an Azure Firewall for stage and prod, inspected with IDPS on prod.</desc>
+  <defs>
+    <marker id="ah-solid" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1B1B1F"/></marker>
+    <marker id="ah-diag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3A3A44"/></marker>
+    <marker id="ah-dns" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8661C5"/></marker>
+    <marker id="ah-wi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#107C10"/></marker>
+  </defs>
+  <rect width="1660" height="1060" fill="#FFFFFF"/>
+  <text x="30" y="42" font-size="21" fill="#0F6CBD" font-weight="700" text-anchor="start">Azure subscription — one per environment</text>
+  <text x="30" y="64" font-size="12.5" fill="#5C5C66" font-weight="normal" text-anchor="start" font-style="italic">Canonical shape across dev, qa, stage and prod. Component labels carry the environments they apply to.</text>
+  <rect x="24" y="150" width="132" height="66" rx="8" fill="#FAFAFC" stroke="#8A8A94" stroke-width="1.6"/>
+  <text x="90" y="178" font-size="13" fill="#1B1B1F" font-weight="600" text-anchor="middle">Users /</text>
+  <text x="90" y="196" font-size="13" fill="#1B1B1F" font-weight="600" text-anchor="middle">Internet</text>
+  <rect x="24" y="505" width="132" height="66" rx="8" fill="#FAFAFC" stroke="#8A8A94" stroke-width="1.6"/>
+  <text x="90" y="543" font-size="13" fill="#1B1B1F" font-weight="600" text-anchor="middle">Operator</text>
+  <text x="24" y="594" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">direct in dev only;</text>
+  <text x="24" y="608" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">qa, stage and prod have</text>
+  <text x="24" y="622" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">a PRIVATE API server</text>
+  <text x="24" y="636" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">reachable only from</text>
+  <text x="24" y="650" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">inside the VNet</text>
+  <rect x="180" y="92" width="700" height="800" rx="8" fill="#FFFFFF" stroke="#107C10" stroke-width="1.6"/>
+  <text x="196" y="116" font-size="14" fill="#107C10" font-weight="700" text-anchor="start">rg-cloudcart-ENV-cus-net</text>
+  <rect x="194" y="130" width="672" height="588" rx="8" fill="#FAFAFC" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="210" y="154" font-size="14" fill="#0F6CBD" font-weight="700" text-anchor="start">VNet  10.x.0.0/16</text>
+  <text x="352" y="154" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">— dev .10 / qa .20 / prod .30 / stage .40</text>
+  <rect x="210" y="170" width="640" height="76" rx="8" fill="#FFFFFF" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="224" y="192" font-size="14" fill="#1B1B1F" font-weight="700" text-anchor="start">Application Gateway WAF v2</text>
+  <text x="224" y="210" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">snet-agw /24   ·   qa Detection  ·  stage + prod Prevention   ·   NOT in dev</text>
+  <rect x="210" y="258" width="640" height="104" rx="8" fill="#FFFFFF" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="224" y="280" font-size="12.5" fill="#0F6CBD" font-weight="700" text-anchor="start">snet-aks /20</text>
+  <text x="224" y="300" font-size="14" fill="#1B1B1F" font-weight="700" text-anchor="start">AKS</text>
+  <text x="258" y="300" font-size="12.5" fill="#1B1B1F" font-weight="normal" text-anchor="start">— Azure CNI Overlay + network policy</text>
+  <text x="224" y="320" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">dev 1 node, Free SKU, PUBLIC API + IP allowlist</text>
+  <text x="224" y="336" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">qa 2 · stage 3 · prod 3 nodes, Standard SKU, PRIVATE API   ·   user node pool in qa, stage, prod</text>
+  <rect x="210" y="374" width="640" height="74" rx="8" fill="#FFFFFF" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="224" y="396" font-size="12.5" fill="#0F6CBD" font-weight="700" text-anchor="start">snet-app /22  ·  snet-biz /22  ·  snet-db /24  ·  snet-mgmt /24</text>
+  <text x="224" y="416" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">allocated, NSG'd, EMPTY — the VM Scale Set tiers AKS replaced</text>
+  <rect x="210" y="460" width="640" height="84" rx="8" fill="#FFFFFF" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="224" y="482" font-size="12.5" fill="#0F6CBD" font-weight="700" text-anchor="start">snet-pep /24</text>
+  <text x="316" y="482" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">— private endpoints</text>
+  <text x="224" y="504" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">PE: SQL   ·   PE: Redis :10000   ·   PE: Key Vault   ·   PE: Storage</text>
+  <rect x="210" y="556" width="640" height="72" rx="8" fill="#FFFFFF" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="224" y="578" font-size="12.5" fill="#0F6CBD" font-weight="700" text-anchor="start">AzureBastionSubnet /26</text>
+  <text x="224" y="598" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">used by Basic and Standard; empty in dev, where Developer attaches by VNet ID</text>
+  <rect x="210" y="640" width="640" height="60" rx="8" fill="#FFFFFF" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="224" y="662" font-size="13.5" fill="#1B1B1F" font-weight="700" text-anchor="start">Private DNS zones</text>
+  <text x="224" y="682" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">4 zones, linked to the VNet</text>
+  <rect x="194" y="734" width="672" height="62" rx="8" fill="#FAFAFC" stroke="#107C10" stroke-width="1.6"/>
+  <text x="210" y="758" font-size="13.5" fill="#1B1B1F" font-weight="700" text-anchor="start">Azure Bastion</text>
+  <text x="210" y="778" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">dev Developer  ·  qa Basic  ·  stage + prod Standard</text>
+  <rect x="194" y="808" width="672" height="58" rx="8" fill="#FAFAFC" stroke="#107C10" stroke-width="1.6"/>
+  <text x="210" y="830" font-size="13.5" fill="#1B1B1F" font-weight="700" text-anchor="start">Route table</text>
+  <text x="210" y="850" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">0.0.0.0/0 → firewall in stage + prod; NO routes in dev + qa; BGP propagation disabled</text>
+  <rect x="902" y="150" width="224" height="560" rx="8" fill="#FFFFFF" stroke="#107C10" stroke-width="1.6" stroke-dasharray="6 5"/>
+  <text x="1014" y="178" font-size="15" fill="#107C10" font-weight="700" text-anchor="middle">EGRESS</text>
+  <text x="1014" y="198" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="middle" font-style="italic">one path, chosen per environment</text>
+  <text x="1014" y="228" font-size="11.5" fill="#5C5C66" font-weight="600" text-anchor="middle" font-style="italic">dev, qa</text>
+  <rect x="916" y="240" width="196" height="148" rx="8" fill="#FAFAFC" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="930" y="264" font-size="13.5" fill="#1B1B1F" font-weight="700" text-anchor="start">NAT Gateway</text>
+  <text x="930" y="284" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">~$35/mo   ·   dev + qa</text>
+  <text x="930" y="300" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">outbound_type =</text>
+  <text x="930" y="316" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">userAssignedNATGateway</text>
+  <text x="930" y="332" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">NO inspection,</text>
+  <text x="930" y="348" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">any destination</text>
+  <text x="1046" y="418" font-size="11.5" fill="#5C5C66" font-weight="600" text-anchor="start" font-style="italic">stage, prod</text>
+  <rect x="916" y="436" width="196" height="258" rx="8" fill="#FAFAFC" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="930" y="460" font-size="13.5" fill="#1B1B1F" font-weight="700" text-anchor="start">Azure Firewall</text>
+  <text x="930" y="480" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">stage Standard ~$913/mo</text>
+  <text x="930" y="496" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">prod Premium ~$1,278 + IDPS</text>
+  <text x="930" y="512" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">outbound_type =</text>
+  <text x="930" y="528" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">userDefinedRouting</text>
+  <text x="930" y="544" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">0.0.0.0/0 → firewall</text>
+  <text x="930" y="560" font-size="12" fill="#5C5C66" font-weight="normal" text-anchor="start">private IP</text>
+  <rect x="1150" y="92" width="486" height="244" rx="8" fill="#FFFFFF" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="1166" y="116" font-size="14" fill="#0F6CBD" font-weight="700" text-anchor="start">rg-cloudcart-ENV-cus-data</text>
+  <rect x="1164" y="130" width="458" height="66" rx="8" fill="#FAFAFC" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="1178" y="152" font-size="13" fill="#1B1B1F" font-weight="700" text-anchor="start">Azure SQL</text>
+  <text x="1252" y="152" font-size="11.5" fill="#1B1B1F" font-weight="normal" text-anchor="start">— Entra-only auth, no SQL login exists</text>
+  <text x="1178" y="170" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">dev GP_S_Gen5_1 serverless  ·  qa GP_Gen5_2</text>
+  <text x="1178" y="183" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">stage BC_Gen5_2  ·  prod BC_Gen5_4, zone redundant</text>
+  <rect x="1164" y="204" width="458" height="56" rx="8" fill="#FAFAFC" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="1178" y="226" font-size="13" fill="#1B1B1F" font-weight="700" text-anchor="start">Azure Managed Redis</text>
+  <text x="1326" y="226" font-size="11.5" fill="#1B1B1F" font-weight="normal" text-anchor="start">— access keys disabled</text>
+  <text x="1178" y="246" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">dev B0 single node NO SLA  ·  qa + stage B1 HA  ·  prod B3 HA</text>
+  <rect x="1164" y="268" width="458" height="56" rx="8" fill="#FAFAFC" stroke="#0F6CBD" stroke-width="1.6"/>
+  <text x="1178" y="290" font-size="13" fill="#1B1B1F" font-weight="700" text-anchor="start">Storage</text>
+  <text x="1240" y="290" font-size="11.5" fill="#1B1B1F" font-weight="normal" text-anchor="start">— shared keys disabled</text>
+  <text x="1178" y="310" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">dev + qa LRS  ·  stage + prod GZRS</text>
+  <rect x="1150" y="356" width="486" height="176" rx="8" fill="#FFFFFF" stroke="#8661C5" stroke-width="1.6"/>
+  <text x="1166" y="380" font-size="14" fill="#8661C5" font-weight="700" text-anchor="start">rg-cloudcart-ENV-cus-sec</text>
+  <rect x="1164" y="394" width="458" height="60" rx="8" fill="#FAFAFC" stroke="#8661C5" stroke-width="1.6"/>
+  <text x="1178" y="416" font-size="13" fill="#1B1B1F" font-weight="700" text-anchor="start">Key Vault</text>
+  <text x="1242" y="416" font-size="11.5" fill="#1B1B1F" font-weight="normal" text-anchor="start">— RBAC</text>
+  <text x="1178" y="436" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">purge protection ON in prod ONLY</text>
+  <rect x="1164" y="462" width="458" height="56" rx="8" fill="#FAFAFC" stroke="#8661C5" stroke-width="1.6"/>
+  <text x="1178" y="484" font-size="13" fill="#1B1B1F" font-weight="700" text-anchor="start">User-assigned identities</text>
+  <text x="1178" y="504" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">one per tier; federated to AKS via workload identity</text>
+  <rect x="1150" y="552" width="486" height="260" rx="8" fill="#FFFFFF" stroke="#0E7490" stroke-width="1.6"/>
+  <text x="1166" y="576" font-size="14" fill="#0E7490" font-weight="700" text-anchor="start">rg-cloudcart-ENV-cus-mon</text>
+  <rect x="1164" y="590" width="458" height="58" rx="8" fill="#FAFAFC" stroke="#0E7490" stroke-width="1.6"/>
+  <text x="1178" y="612" font-size="13" fill="#1B1B1F" font-weight="700" text-anchor="start">Log Analytics</text>
+  <text x="1178" y="632" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">dev CAPPED 0.5 GB/day  ·  others uncapped</text>
+  <rect x="1164" y="656" width="458" height="58" rx="8" fill="#FAFAFC" stroke="#0E7490" stroke-width="1.6"/>
+  <text x="1178" y="678" font-size="13" fill="#1B1B1F" font-weight="700" text-anchor="start">8 metric alerts + 2 log alerts</text>
+  <text x="1178" y="698" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">cap alerts only where a cap exists</text>
+  <rect x="1164" y="722" width="458" height="58" rx="8" fill="#FAFAFC" stroke="#0E7490" stroke-width="1.6"/>
+  <text x="1178" y="744" font-size="13" fill="#1B1B1F" font-weight="700" text-anchor="start">Recovery Services vault</text>
+  <text x="1178" y="764" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="start">protects nothing — AKS backup is a different resource family</text>
+  <rect x="916" y="848" width="196" height="66" rx="8" fill="#FFFFFF" stroke="#8A8A94" stroke-width="1.6"/>
+  <text x="1014" y="876" font-size="14" fill="#1B1B1F" font-weight="700" text-anchor="middle">Internet</text>
+  <text x="1014" y="894" font-size="10.5" fill="#5C5C66" font-weight="normal" text-anchor="middle">(egress destination)</text>
+  <path d="M 156 183 L 210 183 L 210 200" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 530 246 L 530 258" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 156 528 L 182 528 L 182 300 L 210 300" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 156 548 L 176 548 L 176 762 L 194 762" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 850 310 L 916 310" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 1014 388 L 1014 424" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 1014 694 L 1014 848" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 960 388 L 960 824 L 990 824 L 990 848" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <text x="878" y="798" font-size="11" fill="#5C5C66" font-weight="normal" text-anchor="start" font-style="italic">dev, qa — NOT inspected</text>
+  <text x="1130" y="798" font-size="11" fill="#5C5C66" font-weight="normal" text-anchor="start" font-style="italic">stage, prod — inspected, IDPS on prod</text>
+  <path d="M 850 492 L 874 492 L 874 790 L 1132 790 L 1132 158 L 1164 158" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 850 500 L 874 500 L 874 790 L 1132 790 L 1132 230 L 1164 230" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 850 508 L 874 508 L 874 790 L 1132 790 L 1132 294 L 1164 294" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 850 516 L 874 516 L 874 790 L 1132 790 L 1132 424 L 1164 424" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <path d="M 850 340 L 890 340 L 890 112 L 1144 112 L 1144 486 L 1164 486" fill="none" stroke="#107C10" stroke-width="1.7" stroke-dasharray="2 5" marker-end="url(#ah-wi)"/>
+  <path d="M 1150 470 L 1150 420 L 1164 420" fill="none" stroke="#107C10" stroke-width="1.7" stroke-dasharray="2 5" marker-end="url(#ah-wi)"/>
+  <path d="M 1150 462 L 1140 462 L 1140 294 L 1164 294" fill="none" stroke="#107C10" stroke-width="1.7" stroke-dasharray="2 5" marker-end="url(#ah-wi)"/>
+  <path d="M 866 352 L 1120 352 L 1120 612 L 1164 612" fill="none" stroke="#3A3A44" stroke-width="1.7" stroke-dasharray="7 5" marker-end="url(#ah-diag)"/>
+  <path d="M 866 620 L 1112 620 L 1112 618 L 1164 618" fill="none" stroke="#3A3A44" stroke-width="1.7" stroke-dasharray="7 5" marker-end="url(#ah-diag)"/>
+  <path d="M 1156 196 L 1156 606 L 1164 606" fill="none" stroke="#3A3A44" stroke-width="1.7" stroke-dasharray="7 5" marker-end="url(#ah-diag)"/>
+  <path d="M 534 640 L 534 544" fill="none" stroke="#8661C5" stroke-width="1.7" stroke-dasharray="8 5" marker-end="url(#ah-dns)"/>
+  <rect x="24" y="940" width="1612" height="62" rx="8" fill="#FAFAFC" stroke="#8A8A94" stroke-width="1.6"/>
+  <path d="M 56 966 L 114 966" fill="none" stroke="#1B1B1F" stroke-width="1.7" marker-end="url(#ah-solid)"/>
+  <text x="126" y="962" font-size="12" fill="#1B1B1F" font-weight="600" text-anchor="start">Solid</text>
+  <text x="126" y="980" font-size="11" fill="#5C5C66" font-weight="normal" text-anchor="start">Data / access flow</text>
+  <path d="M 456 966 L 514 966" fill="none" stroke="#3A3A44" stroke-width="1.7" stroke-dasharray="7 5" marker-end="url(#ah-diag)"/>
+  <text x="526" y="962" font-size="12" fill="#1B1B1F" font-weight="600" text-anchor="start">Dashed</text>
+  <text x="526" y="980" font-size="11" fill="#5C5C66" font-weight="normal" text-anchor="start">Diagnostics / logs</text>
+  <path d="M 856 966 L 914 966" fill="none" stroke="#8661C5" stroke-width="1.7" stroke-dasharray="8 5" marker-end="url(#ah-dns)"/>
+  <text x="926" y="962" font-size="12" fill="#1B1B1F" font-weight="600" text-anchor="start">Purple dashed</text>
+  <text x="926" y="980" font-size="11" fill="#5C5C66" font-weight="normal" text-anchor="start">DNS resolution</text>
+  <path d="M 1256 966 L 1314 966" fill="none" stroke="#107C10" stroke-width="1.7" stroke-dasharray="2 5" marker-end="url(#ah-wi)"/>
+  <text x="1326" y="962" font-size="12" fill="#1B1B1F" font-weight="600" text-anchor="start">Green dotted</text>
+  <text x="1326" y="980" font-size="11" fill="#5C5C66" font-weight="normal" text-anchor="start">Workload identity</text>
+</svg>

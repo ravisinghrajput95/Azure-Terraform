@@ -206,7 +206,7 @@ environments they apply to; §3b is the table of what differs.
 **Only `dev` has ever been applied**, and it was decommissioned on
 2026-08-14. Everything else is configuration that plans.
 
-![Canonical architecture — one shape across dev, qa, stage and prod. Users reach an Application Gateway WAF v2 (absent in dev) which fronts an AKS cluster on Azure CNI Overlay. Data services are reached only through private endpoints. Egress takes one of two paths chosen per environment: a NAT Gateway for dev and qa, uninspected; or an Azure Firewall for stage and prod, inspected with IDPS on prod.](images/architecture.png)
+![Canonical architecture — one shape across dev, qa, stage and prod. Users reach an Application Gateway WAF v2 (absent in dev) which fronts an AKS cluster on Azure CNI Overlay. Data services are reached only through private endpoints. Egress takes one of two paths chosen per environment: a NAT Gateway for dev and qa, uninspected; or an Azure Firewall for stage and prod, inspected with IDPS on prod.](images/architecture.svg)
 
 
 ### 3b. What actually differs between environments

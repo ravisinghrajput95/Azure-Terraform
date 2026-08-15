@@ -31,7 +31,7 @@ and differentiated by variables rather than by code.
 One shape across all four environments, differentiated by variables rather
 than by code. Labels carry the environments each component applies to.
 
-![Canonical architecture — one shape across dev, qa, stage and prod. Users reach an Application Gateway WAF v2 (absent in dev) which fronts an AKS cluster on Azure CNI Overlay. Data services are reached only through private endpoints. Egress takes one of two paths chosen per environment: a NAT Gateway for dev and qa, uninspected; or an Azure Firewall for stage and prod, inspected with IDPS on prod.](docs/images/architecture.png)
+![Canonical architecture — one shape across dev, qa, stage and prod. Users reach an Application Gateway WAF v2 (absent in dev) which fronts an AKS cluster on Azure CNI Overlay. Data services are reached only through private endpoints. Egress takes one of two paths chosen per environment: a NAT Gateway for dev and qa, uninspected; or an Azure Firewall for stage and prod, inspected with IDPS on prod.](docs/images/architecture.svg)
 
 Two rows change the **topology** rather than a setting, which is why the
 diagram branches at `EGRESS`:
