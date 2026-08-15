@@ -511,8 +511,8 @@ the network, then data, then compute, then observability wiring.
 | 16 | `redis` | 6, 10 | Private endpoint. |
 | 17 | `load-balancer` | 6 | Internal LB for the business tier. |
 | 18 | `application-gateway` | 6, 12 | Needs the vault for its TLS certificate. |
-| 19 | ~~`vm`~~ → `aks` | 6, 7, 11 | **Superseded.** VMSS never built; compute is AKS. See §6b. |
-| 20 | ~~`autoscale`~~ | — | **Dropped.** The cluster autoscaler lives on the node pool, inside `aks`. |
+| 19 | ~~`vm`~~ → `aks` | 6, 7, 11 | **Superseded.** VMSS never built; compute is AKS. Empty directory removed 2026-08-15. See §6b. |
+| 20 | ~~`autoscale`~~ | — | **Dropped.** The cluster autoscaler lives on the node pool, inside `aks`. Empty directory removed 2026-08-15. |
 | 21 | `recovery-services` | 3 | Vault and policies. Its original subject — the scale sets — never existed, so it protects nothing. See below. |
 | 22 | `monitor` | 4, and all | Alerts reference resources that must already exist. |
 

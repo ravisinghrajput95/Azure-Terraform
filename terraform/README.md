@@ -88,8 +88,12 @@ terraform/
     └── recovery-services        Recovery Services vault and backup policies
 ```
 
-`vm` and `autoscale` are **empty placeholder directories**, not modules — both
-were superseded by AKS (ARCHITECTURE.md §6b).
+`vm` and `autoscale` were **removed on 2026-08-15**. They had been empty
+placeholder directories since the start and were superseded by AKS
+(ARCHITECTURE.md §6b) before either was written: `vm` became the `aks` module,
+and `autoscale` became the cluster autoscaler configured on the node pool
+inside it. Every directory under `modules/` is now a real module, so the count
+of directories and the count of modules are the same number.
 
 `firewall` is written but **has never been applied**, because Azure Firewall is
 ~$913/month against a $200 credit. `dev` and `qa` therefore egress through a

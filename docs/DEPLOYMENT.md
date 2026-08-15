@@ -1,5 +1,27 @@
 # Dependency Graph and Deployment Order
 
+> ### This document still describes the VM Scale Set topology
+>
+> It was written against the original design and **has not been updated for
+> §6b**, where compute became AKS. Read it accordingly:
+>
+> - The `vm` and `autoscale` nodes below are **not modules**. `vm` was never
+>   written and `autoscale` was dropped; both directories were empty and were
+>   removed on 2026-08-15. Compute is the `aks` module, and the cluster
+>   autoscaler is configured on its node pool.
+> - Wherever this document says `vm` or VMSS, the dependency is `aks`. The
+>   ordering it describes — network before compute, load balancer and gateway
+>   before the backend, compute before `recovery-services` and most of
+>   `monitor` — is unchanged by the substitution.
+> - §5's rollback advice for compute assumed VMSS instances were cattle. AKS
+>   node pools are too, but a rolled-back node pool is a different operation
+>   from a rolled-back scale set, and it has never been performed here.
+>
+> The graph and phase order remain accurate for everything that is not
+> compute. Rewriting it around AKS is outstanding work, not a correction that
+> can be made by find-and-replace, so it is marked rather than half-changed.
+> `terraform/README.md` is the current module inventory.
+
 ---
 
 ## 1. Module dependency graph
