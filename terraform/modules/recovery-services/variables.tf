@@ -179,7 +179,20 @@ variable "vm_backup_policies" {
 ################################################################################
 
 variable "file_share_backup_policies" {
-  description = "Azure Files backup policies, keyed by policy name. Same weekday-alignment rules as VM policies."
+  description = <<-EOT
+    Azure Files backup policies, keyed by policy name.
+
+    NOT the same as VM policies, despite what this description used to claim.
+    `azurerm_backup_policy_file_share` accepts frequency "Daily" or "Hourly"
+    only — the provider refuses "Weekly" outright. So there is no weekly
+    SCHEDULE here to misalign against, and the weekday-alignment failure that
+    dominates vm_backup_policies cannot occur: a daily backup produces a
+    recovery point on every weekday, so any retention weekday is available.
+
+    retention_weekly still applies. It selects which of those daily recovery
+    points to keep for the longer tier, which is a different thing from the
+    schedule.
+  EOT
 
   type = map(object({
     frequency = optional(string, "Daily")

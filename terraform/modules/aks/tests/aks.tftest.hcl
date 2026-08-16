@@ -193,9 +193,56 @@ run "rejects_dns_service_ip_outside_service_cidr" {
 run "rejects_identical_pod_and_service_cidrs" {
   command = plan
 
+  # dns_service_ip is moved INTO the shared range on purpose. Left at its
+  # default it sits outside service_cidr, so this run also tripped the DNS
+  # precondition and passed whether or not the overlap check was doing
+  # anything. Mutation testing found it: weakening cidrs_overlap left the test
+  # still failing, on the other check.
   variables {
-    pod_cidr     = "192.168.0.0/16"
-    service_cidr = "192.168.0.0/16"
+    pod_cidr       = "192.168.0.0/16"
+    service_cidr   = "192.168.0.0/16"
+    dns_service_ip = "192.168.0.10"
+  }
+
+  expect_failures = [azurerm_kubernetes_cluster.this]
+}
+
+run "rejects_network_policy_without_azure_cni" {
+  command = plan
+
+  # A policy engine needs Azure CNI. Without it the policy is accepted and
+  # enforces nothing, so every pod reaches every other pod while the
+  # configuration reads as though namespaces are separated.
+  variables {
+    network_plugin = "kubenet"
+    network_policy = "azure"
+  }
+
+  expect_failures = [azurerm_kubernetes_cluster.this]
+}
+
+run "rejects_workload_identity_without_the_oidc_issuer" {
+  command = plan
+
+  # The federated token a workload presents is issued by that endpoint. With
+  # the issuer off, workload identity is enabled, displays as enabled, and no
+  # pod can obtain a token.
+  variables {
+    workload_identity_enabled = true
+    oidc_issuer_enabled       = false
+  }
+
+  expect_failures = [azurerm_kubernetes_cluster.this]
+}
+
+run "rejects_cost_analysis_on_the_free_tier" {
+  command = plan
+
+  # Accepted on Free and simply never produces data, so the cost view stays
+  # empty and looks like a workload with no spend.
+  variables {
+    cost_analysis_enabled = true
+    sku_tier              = "Free"
   }
 
   expect_failures = [azurerm_kubernetes_cluster.this]

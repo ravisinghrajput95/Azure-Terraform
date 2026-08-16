@@ -298,3 +298,24 @@ run "rejects_duplicate_tiers" {
     var.tiers,
   ]
 }
+
+################################################################################
+# The generated-name constraint check has no test that fires it
+#
+# main.tf asserts length(local.constraint_failures) == 0 — every generated name
+# must satisfy its own Azure constraint. Mutation testing showed no run depends
+# on it: weakening it changes nothing.
+#
+# That is because the variable validations upstream already make it
+# unsatisfiable, as far as any input could be constructed here. workload is
+# capped at 10 lowercase alphanumeric characters, environment comes from a
+# fixed set, instance is three digits, and location abbreviations are validated
+# to [a-z0-9]{2,6}. The longest key vault name those can produce is 24
+# characters, exactly its limit, and it ends in a hex digit rather than a
+# hyphen; the storage account name is substr'd to 24 from alphanumeric parts.
+#
+# So it is defence in depth against a future abbreviation or naming change
+# rather than a live guard, and the runs above assert its PREMISE — that the
+# generated names satisfy the constraints — rather than its failure. Stated
+# here so the gap reads as understood rather than overlooked.
+################################################################################

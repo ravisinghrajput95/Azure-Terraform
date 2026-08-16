@@ -692,3 +692,18 @@ run "counts_both_log_search_alerts_in_indicative_cost" {
     error_message = "Both log search alerts must be counted."
   }
 }
+
+################################################################################
+# The cap-warning window precondition cannot fire
+#
+# main.tf asserts !local.daily_cap_warning_window_too_short, which is true when
+# the window is under 1440 minutes. The run above named for that case expects a
+# VARIABLE validation failure, not the precondition — and that is the whole
+# story: daily_cap_warning_window_duration is validated to
+# contains(["P1D", "P2D"]), which is 1440 and 2880 minutes. Every permitted
+# value already clears the bar, so the precondition has nothing left to catch.
+#
+# Confirmed by mutation: weakening it to an always-true expression changes no
+# result. Kept as defence in depth if the permitted list is ever widened, and
+# recorded here so the gap reads as understood rather than missed.
+################################################################################

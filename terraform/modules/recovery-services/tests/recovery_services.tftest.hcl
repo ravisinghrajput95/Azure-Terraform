@@ -291,3 +291,29 @@ run "accepts_locked_immutability_when_acknowledged" {
     error_message = "A locked vault must state that the choice is irreversible."
   }
 }
+
+################################################################################
+# The file share half of the alignment check is unreachable
+#
+# main.tf carries the weekly-retention-alignment precondition TWICE: once on
+# azurerm_backup_policy_vm and once on azurerm_backup_policy_file_share. Only
+# the VM one is tested above, and mutation testing showed the file share copy
+# made no difference to any run.
+#
+# It cannot be tested, because it cannot fire. azurerm_backup_policy_file_share
+# accepts frequency "Daily" or "Hourly" ONLY — the provider rejects "Weekly"
+# outright with "expected backup.0.frequency to be one of [Daily Hourly]". So
+# local.weekly_file_share_policies, which filters on frequency == "Weekly", is
+# always empty, and the file share branch of weekly_retention_misalignments can
+# never produce an entry.
+#
+# The local also reads p.weekdays on those policies, an attribute the file share
+# variable type does not define. That is latent rather than live: the
+# expression is only reached for a weekly policy, which the provider forbids.
+# Adding the field to make it reachable was the wrong fix — it would invent a
+# schedule Azure does not offer.
+#
+# Recorded rather than removed. Deleting the branch is a judgement call about
+# code that is harmlessly dead today and would become correct if Azure ever
+# added weekly file share schedules.
+################################################################################

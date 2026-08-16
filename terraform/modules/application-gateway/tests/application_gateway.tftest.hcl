@@ -171,6 +171,26 @@ run "rejects_rule_referencing_unknown_backend_pool" {
   expect_failures = [azurerm_application_gateway.this]
 }
 
+run "rejects_rule_referencing_unknown_http_settings" {
+  command = plan
+
+  # The only one of the four reference checks with no test. A rule naming
+  # backend HTTP settings that do not exist resolves to nothing, and the
+  # gateway is created with a rule that routes nowhere.
+  variables {
+    routing_rules = {
+      https = {
+        listener_name              = "https"
+        backend_pool_name          = "app"
+        backend_http_settings_name = "does-not-exist"
+        priority                   = 100
+      }
+    }
+  }
+
+  expect_failures = [azurerm_application_gateway.this]
+}
+
 run "rejects_settings_referencing_unknown_probe" {
   command = plan
 

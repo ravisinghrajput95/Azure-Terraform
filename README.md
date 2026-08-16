@@ -108,23 +108,29 @@ make check              # fmt-check, validate, test, lint
 make plan ENV=dev       # needs credentials
 ```
 
-**284 tests** run with `mock_provider` — no credentials, nothing created. They
+**288 tests** run with `mock_provider` — no credentials, nothing created. They
 test the preconditions, not the provider: a test asserting that
 `azurerm_storage_account` sets a name is testing HashiCorp's code.
 
-**All 22 built modules are covered**, and the coverage was measured rather than
-assumed. Every precondition was weakened to an always-true expression in turn
-to check that some test actually fails when it stops guarding: **100 of 110 are
-confirmed that way, and the other 10 are listed below rather than glossed.**
+**All 22 built modules are covered, and the coverage was measured rather than
+asserted.** Every precondition in the repository was weakened to an always-true
+expression in turn, with the suite re-run each time, to check that some test
+actually fails when it stops guarding. **105 of 110 are confirmed that way. The
+other 5 cannot fire at all**, and each is written up in its own test file:
 
-| Not confirmed by mutation | Why |
+| Precondition | Why it can never fire |
 |---|---|
-| `bastion`, `load-balancer` — 1 each | The precondition can never fire. Its resource's public IP rejects a null name first, so Terraform stops before preconditions are evaluated. Recorded in both test files |
-| `aks` ×4, `application-gateway`, `monitor`, `naming`, `recovery-services` — 8 | No test isolates them. All eight are in the modules that already had tests before this pass, and `expect_failures` passes when *any* precondition on the named resource fires — so a test can be green without exercising the one it was written for |
+| `bastion`, `load-balancer` — public IP name | The public IP resource rejects a null `name` first, so Terraform stops before preconditions are evaluated |
+| `monitor` — cap warning window | The variable is validated to `P1D` or `P2D`, 1440 and 2880 minutes. Every permitted value already clears the 1440 bar |
+| `naming` — generated name constraints | The upstream validations bound every input, so no constructible input produces an invalid name |
+| `recovery-services` — file share retention alignment | `azurerm_backup_policy_file_share` accepts `Daily` or `Hourly` only; the provider refuses `Weekly`, so there is no weekly schedule to misalign against |
 
-Writing the tests found four real defects, all of one kind — expressions
+None is a missing test. Each is a guard made redundant by a stricter check
+earlier in the chain — worth keeping, worth not counting as coverage.
+
+Writing the tests found five real defects, four of one kind: expressions
 relying on `&&` and `||` to short-circuit, which Terraform 1.9.8 does not do.
-Three were invisible to `terraform validate`, which does not evaluate those
+Most were invisible to `terraform validate`, which does not evaluate those
 paths, and to every environment plan, which needs credentials this repository
 does not have.
 
