@@ -108,22 +108,25 @@ make check              # fmt-check, validate, test, lint
 make plan ENV=dev       # needs credentials
 ```
 
-**178 tests** run with `mock_provider` — no credentials, nothing created. They
+**284 tests** run with `mock_provider` — no credentials, nothing created. They
 test the preconditions, not the provider: a test asserting that
 `azurerm_storage_account` sets a name is testing HashiCorp's code.
 
-**That is 9 of the 22 built modules, not all of them.** Those 9 hold 63
-preconditions between them. The other 13 modules hold **46 preconditions with
-no test at all** — among them `redis`, which refuses a cache that Azure creates
-successfully and then leaves unreachable by every client. That is exactly the
-failure class this repository is built around, and there it is guarded by the
-precondition alone.
+**All 22 built modules are covered**, and the coverage was measured rather than
+assumed. Every precondition was weakened to an always-true expression in turn
+to check that some test actually fails when it stops guarding: **100 of 110 are
+confirmed that way, and the other 10 are listed below rather than glossed.**
 
-*Tested:* `aks`, `application-gateway`, `firewall`, `monitor`, `naming`,
-`networking`, `profile`, `recovery-services`, `tags`.
-*No tests:* `bastion`, `diagnostics`, `key-vault`, `load-balancer`,
-`log-analytics`, `managed-identity`, `nsg`, `private-dns`, `redis`,
-`resource-group`, `route-table`, `sql`, `storage`.
+| Not confirmed by mutation | Why |
+|---|---|
+| `bastion`, `load-balancer` — 1 each | The precondition can never fire. Its resource's public IP rejects a null name first, so Terraform stops before preconditions are evaluated. Recorded in both test files |
+| `aks` ×4, `application-gateway`, `monitor`, `naming`, `recovery-services` — 8 | No test isolates them. All eight are in the modules that already had tests before this pass, and `expect_failures` passes when *any* precondition on the named resource fires — so a test can be green without exercising the one it was written for |
+
+Writing the tests found four real defects, all of one kind — expressions
+relying on `&&` and `||` to short-circuit, which Terraform 1.9.8 does not do.
+Three were invisible to `terraform validate`, which does not evaluate those
+paths, and to every environment plan, which needs credentials this repository
+does not have.
 
 | Document | Contents |
 |---|---|
