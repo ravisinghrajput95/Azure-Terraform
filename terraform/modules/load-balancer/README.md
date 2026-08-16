@@ -189,14 +189,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -206,7 +206,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_lb.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/lb) | resource |
 | [azurerm_lb_backend_address_pool.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/lb_backend_address_pool) | resource |
 | [azurerm_lb_probe.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/lb_probe) | resource |
@@ -216,7 +216,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_backend_pools"></a> [backend\_pools](#input\_backend\_pools) | Backend pool names. A scale set attaches itself to these by ID rather than the pool listing its members, so the pool is created empty and populated by the vm module. | `list(string)` | <pre>[<br/>  "default"<br/>]</pre> | no |
 | <a name="input_disable_outbound_snat"></a> [disable\_outbound\_snat](#input\_disable\_outbound\_snat) | Whether load balancing rules perform outbound SNAT.<br/><br/>TRUE here, deliberately. This platform provides egress through a NAT<br/>Gateway attached to the subnet, and a NAT Gateway takes precedence over<br/>load balancer outbound SNAT anyway. Leaving LB SNAT enabled creates a<br/>second, undeclared egress path that is invisible in the route table and<br/>competes for a much smaller SNAT port allocation — the usual cause of<br/>intermittent outbound connection failures under load. | `bool` | `true` | no |
 | <a name="input_location"></a> [location](#input\_location) | Azure region, normalised form. | `string` | n/a | yes |
@@ -234,7 +234,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_backend_pool_ids"></a> [backend\_pool\_ids](#output\_backend\_pool\_ids) | Map of pool name to ID. Pass the relevant ID to the vm module's scale set network configuration. |
 | <a name="output_frontend_ip_address"></a> [frontend\_ip\_address](#output\_frontend\_ip\_address) | The address clients connect to: the private frontend address for an internal load balancer, the public IP for a public one. |
 | <a name="output_id"></a> [id](#output\_id) | ARM resource ID of the load balancer. Diagnostic settings target this. |

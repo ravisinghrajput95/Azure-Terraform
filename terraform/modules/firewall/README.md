@@ -275,14 +275,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -292,7 +292,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_firewall.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/firewall) | resource |
 | [azurerm_firewall_policy.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/firewall_policy) | resource |
 | [azurerm_firewall_policy_rule_collection_group.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/firewall_policy_rule_collection_group) | resource |
@@ -302,7 +302,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_acknowledge_broad_network_allow"></a> [acknowledge\_broad\_network\_allow](#input\_acknowledge\_broad\_network\_allow) | Permit a broad Allow network rule to coexist with application rules.<br/><br/>Azure evaluates ALL network rules before ANY application rule. A network<br/>rule allowing 0.0.0.0/0 on 80/443 therefore matches web traffic first, and<br/>every FQDN-filtering application rule beneath it never evaluates. The<br/>application rules remain visible, correct-looking and completely inert.<br/><br/>Set this only where the broad rule is deliberate and the application rules<br/>are understood to be unreachable for those ports. | `bool` | `false` | no |
 | <a name="input_acknowledge_no_rules"></a> [acknowledge\_no\_rules](#input\_acknowledge\_no\_rules) | Permit deploying a firewall with NO rule collections at all.<br/><br/>An Azure Firewall denies by default. Once a route table sends 0.0.0.0/0 to<br/>it, a firewall with no rules blackholes ALL egress — no DNS, no package<br/>repositories, no container registries. AKS nodes fail to bootstrap and the<br/>cluster never converges, while the firewall itself reports healthy and the<br/>portal shows a correctly provisioned resource.<br/><br/>Legitimate as a first step when rules land in a later apply. Set it<br/>knowingly. | `bool` | `false` | no |
 | <a name="input_application_rule_collections"></a> [application\_rule\_collections](#input\_application\_rule\_collections) | Application (L7 / FQDN) rule collections, keyed by name. Evaluated only for traffic no network rule already matched. | <pre>map(object({<br/>    priority = number<br/>    action   = optional(string, "Allow")<br/>    rules = map(object({<br/>      protocols = map(object({<br/>        type = string<br/>        port = number<br/>      }))<br/>      source_addresses      = optional(list(string), [])<br/>      source_ip_groups      = optional(list(string), [])<br/>      destination_fqdns     = optional(list(string), [])<br/>      destination_fqdn_tags = optional(list(string), [])<br/>      destination_urls      = optional(list(string), [])<br/>      web_categories        = optional(list(string), [])<br/>      terminate_tls         = optional(bool, false)<br/>      description           = optional(string)<br/>    }))<br/>  }))</pre> | `{}` | no |
@@ -329,7 +329,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_id"></a> [id](#output\_id) | Firewall resource ID. |
 | <a name="output_indicative_monthly_cost_usd"></a> [indicative\_monthly\_cost\_usd](#output\_indicative\_monthly\_cost\_usd) | ORDER-OF-MAGNITUDE monthly estimate at approximate US list price for the deployment hours alone. Data processing is roughly $0.016/GB ON TOP of this, and cross-zone transfer is extra again. Not a budget figure — verify against the Azure Pricing Calculator. |
 | <a name="output_intrusion_detection_enforces"></a> [intrusion\_detection\_enforces](#output\_intrusion\_detection\_enforces) | True only when IDPS is set to "Deny" on a Premium firewall. "Alert" logs signature matches and allows them. |

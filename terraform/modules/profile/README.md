@@ -218,13 +218,13 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
 
 ## Modules
@@ -234,13 +234,13 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [terraform_data.validation](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_compute_tier_count"></a> [compute\_tier\_count](#input\_compute\_tier\_count) | Number of independently-scaling compute groups sharing the regional vCPU quota. One for an AKS cluster, whose node pools draw from the same quota; higher only where separate scale sets scale independently of each other. Used by both the vCPU quota assertion and the cost estimate, so an inflated value double-counts both. | `number` | `1` | no |
 | <a name="input_enforce_production_guardrails"></a> [enforce\_production\_guardrails](#input\_enforce\_production\_guardrails) | When true and environment is prod, assert that backup, alerting, Key Vault purge protection and resource locks are enabled, and that SQL retains backups for at least 35 days. Prevents an override from silently producing an unprotected production environment. Disable only with a deliberate, documented reason. | `bool` | `true` | no |
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment whose profile to select. This is the ONLY place, alongside naming and tags, where an environment name appears. No downstream module may branch on it — they receive explicit capability flags instead. See README.md. | `string` | n/a | yes |
@@ -250,7 +250,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_aks_is_highly_available"></a> [aks\_is\_highly\_available](#output\_aks\_is\_highly\_available) | Whether the cluster is genuinely HA: three or more nodes spread across at least three availability zones. False means a node or zone fault takes the cluster with it — reported explicitly so a degraded dev cluster never reads as production-shaped. |
 | <a name="output_aks_private_cluster"></a> [aks\_private\_cluster](#output\_aks\_private\_cluster) | Whether the Kubernetes API server is private. When true, kubectl works only from inside the VNet or through Bastion. |
 | <a name="output_cost_breakdown"></a> [cost\_breakdown](#output\_cost\_breakdown) | Indicative cost split by component, same caveats as indicative\_monthly\_cost\_usd. Useful for seeing which single component dominates an environment's bill. |

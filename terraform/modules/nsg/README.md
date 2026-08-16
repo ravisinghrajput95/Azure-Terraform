@@ -194,14 +194,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -211,7 +211,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_network_security_group.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_group) | resource |
 | [azurerm_network_security_rule.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_rule) | resource |
 | [azurerm_subnet_network_security_group_association.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet_network_security_group_association) | resource |
@@ -219,7 +219,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_location"></a> [location](#input\_location) | Azure region, normalised form. | `string` | n/a | yes |
 | <a name="input_network_security_groups"></a> [network\_security\_groups](#input\_network\_security\_groups) | Map of NSG name to its configuration.<br/><br/>  subnet\_id  Subnet to associate the NSG with. Azure permits at most ONE<br/>             NSG per subnet, so two entries pointing at the same subnet is<br/>             a configuration error, not a merge.<br/><br/>  rules      Map of rule name to rule. Keyed by name so that adding a rule<br/>             does not re-index the others in plan output — which matters<br/>             when the diff being reviewed is a firewall change.<br/><br/>Ports and addresses each accept a singular or a plural form. Supplying both<br/>forms for the same field is rejected: Azure ignores one of them silently,<br/>and which one it ignores is not obvious. | <pre>map(object({<br/>    subnet_id        = optional(string)<br/>    attach_to_subnet = optional(bool, true)<br/><br/>    rules = map(object({<br/>      priority    = number<br/>      direction   = string<br/>      access      = string<br/>      protocol    = string<br/>      description = optional(string)<br/><br/>      source_port_range  = optional(string, "*")<br/>      source_port_ranges = optional(list(string))<br/><br/>      destination_port_range  = optional(string)<br/>      destination_port_ranges = optional(list(string))<br/><br/>      source_address_prefix   = optional(string)<br/>      source_address_prefixes = optional(list(string))<br/><br/>      destination_address_prefix   = optional(string, "*")<br/>      destination_address_prefixes = optional(list(string))<br/>    }))<br/>  }))</pre> | n/a | yes |
 | <a name="input_require_explicit_inbound_deny"></a> [require\_explicit\_inbound\_deny](#input\_require\_explicit\_inbound\_deny) | Require every NSG to carry an explicit inbound Deny rule. Azure's built-in AllowVnetInBound rule at priority 65000 permits all intra-VNet traffic, so without a lower-priority deny an NSG with only Allow rules enforces nothing between tiers. Disable only for an NSG deliberately intended to be permissive. | `bool` | `true` | no |
@@ -229,7 +229,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_associated_subnet_ids"></a> [associated\_subnet\_ids](#output\_associated\_subnet\_ids) | Map of NSG name to the subnet it protects. An NSG absent from this map exists but is attached to nothing, so its rules are inert. |
 | <a name="output_ids"></a> [ids](#output\_ids) | Map of NSG name to ARM resource ID. Feed this to the diagnostics module with for\_each to attach flow diagnostics to every NSG. |
 | <a name="output_names"></a> [names](#output\_names) | Map of NSG name to name, for callers that need the map shape. |

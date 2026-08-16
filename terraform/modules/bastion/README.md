@@ -168,14 +168,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -185,14 +185,14 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_bastion_host.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/bastion_host) | resource |
 | [azurerm_public_ip.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/public_ip) | resource |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_copy_paste_enabled"></a> [copy\_paste\_enabled](#input\_copy\_paste\_enabled) | Allow clipboard copy and paste in the browser session. Supported on all SKUs. Disabling it is a data-exfiltration control that also makes routine operator work materially slower. | `bool` | `true` | no |
 | <a name="input_file_copy_enabled"></a> [file\_copy\_enabled](#input\_file\_copy\_enabled) | Allow file upload and download through the session. Standard and Premium only. | `bool` | `false` | no |
 | <a name="input_ip_connect_enabled"></a> [ip\_connect\_enabled](#input\_ip\_connect\_enabled) | Allow connecting to a target by private IP rather than by resource ID. Standard and Premium only. Convenient, and it widens reachable targets to anything routable from the Bastion subnet. | `bool` | `false` | no |
@@ -214,7 +214,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_capability_notes"></a> [capability\_notes](#output\_capability\_notes) | Human-readable summary of what this SKU can and cannot do, for operators who did not choose it. |
 | <a name="output_dns_name"></a> [dns\_name](#output\_dns\_name) | FQDN of the Bastion host. Used by `az network bastion` and by the portal to establish sessions. |
 | <a name="output_id"></a> [id](#output\_id) | ARM resource ID of the Bastion host. Diagnostics target this. |

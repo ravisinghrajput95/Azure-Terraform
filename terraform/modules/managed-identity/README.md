@@ -170,7 +170,7 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 | <a name="requirement_time"></a> [time](#requirement\_time) | ~> 0.12 |
@@ -178,7 +178,7 @@ hand.
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 | <a name="provider_time"></a> [time](#provider\_time) | 0.14.0 |
 
@@ -189,7 +189,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_role_assignment.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
 | [azurerm_user_assigned_identity.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/user_assigned_identity) | resource |
 | [time_sleep.propagation](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/sleep) | resource |
@@ -197,7 +197,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_identities"></a> [identities](#input\_identities) | Map of tier key to identity name, e.g. { app = "id-app-dev-eus-001" }. The key is used to address the identity in outputs and in role\_assignments, so it must be stable — renaming a key destroys and recreates the identity, invalidating every role assignment that referenced its principal ID. | `map(string)` | n/a | yes |
 | <a name="input_location"></a> [location](#input\_location) | Azure region, normalised form. | `string` | n/a | yes |
 | <a name="input_propagation_delay_seconds"></a> [propagation\_delay\_seconds](#input\_propagation\_delay\_seconds) | Seconds to wait after creating identities before dependent resources use<br/>them.<br/><br/>A newly created user-assigned identity's service principal takes time to<br/>become visible across Entra ID, and there is no API to poll for readiness.<br/>Until it propagates, operations referencing the principal fail with<br/>PrincipalNotFound — intermittently, which makes it look like a flaky apply<br/>rather than a consistency window.<br/><br/>Role assignments created by THIS module set principal\_type explicitly,<br/>which avoids the lookup entirely and needs no delay. This wait exists for<br/>downstream consumers that touch a data plane — Key Vault in particular,<br/>where the RBAC grant must be effective before a secret can be read.<br/><br/>Set to 0 to disable. 30 is usually enough; a first-ever identity in a<br/>tenant can take longer. | `number` | `30` | no |
@@ -208,7 +208,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_client_ids"></a> [client\_ids](#output\_client\_ids) | Map of tier key to client (application) ID. This is what application code presents when requesting a token for a specific user-assigned identity — a VM with more than one assigned identity must name which to use. |
 | <a name="output_identities"></a> [identities](#output\_identities) | Full detail per tier: id, name, principal\_id, client\_id. For callers needing more than one field. |
 | <a name="output_ids"></a> [ids](#output\_ids) | Map of tier key to identity ARM resource ID. This is what a scale set's identity block references. |

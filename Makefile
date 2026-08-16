@@ -178,6 +178,31 @@ tf-version: ## Warn when local terraform differs from the version CI pins
 	  echo ""; \
 	fi
 
+# The terraform-docs version bundled in terraform-docs/gh-actions@v1. Output
+# differs between versions in ways that look trivial and are not: 0.24.0 writes
+# a table separator as `| ---- |` where 0.20.0 writes `|------|`. The docs job
+# regenerates and fails on ANY diff, so generating with the wrong version turns
+# the pipeline red for whitespace.
+TFDOCS_CI_VERSION := 0.20.0
+
+.PHONY: docs
+docs: ## Regenerate the module README tables, the way CI generates them
+	@set -uo pipefail; \
+	command -v terraform-docs >/dev/null || { echo "terraform-docs is not installed" >&2; exit 1; }; \
+	have=$$(terraform-docs --version | awk '{print $$3}' | tr -d 'v'); \
+	if [ "$$have" != "$(TFDOCS_CI_VERSION)" ]; then \
+	  echo ""; \
+	  echo "  WARNING  terraform-docs $$have here, CI bundles $(TFDOCS_CI_VERSION)."; \
+	  echo "           Table formatting differs between them and the docs job fails"; \
+	  echo "           on any diff, so this will turn CI red for whitespace."; \
+	  echo ""; \
+	fi; \
+	for dir in terraform/modules/*/; do \
+	  terraform-docs markdown table --indent 2 --output-mode inject \
+	    --output-file README.md "$$dir" >/dev/null; \
+	done; \
+	echo "regenerated $$(ls -d terraform/modules/*/ | wc -l | tr -d ' ') module READMEs"
+
 .PHONY: check
 check: tf-version fmt-check validate test lint ## Everything CI checks, in CI's order
 

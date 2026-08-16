@@ -364,14 +364,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -381,7 +381,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_kubernetes_cluster.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/kubernetes_cluster) | resource |
 | [azurerm_kubernetes_cluster_node_pool.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/kubernetes_cluster_node_pool) | resource |
 | [azurerm_role_assignment.cluster_admin](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
@@ -389,7 +389,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_api_server_authorized_ip_ranges"></a> [api\_server\_authorized\_ip\_ranges](#input\_api\_server\_authorized\_ip\_ranges) | Public CIDRs permitted to reach the API server. Only meaningful on a public cluster. An empty list on a public cluster leaves the Kubernetes control plane open to the entire internet. Operator addresses only — the cluster's own egress address belongs in node\_egress\_ip\_ranges. | `list(string)` | `[]` | no |
 | <a name="input_auto_scaler_profile"></a> [auto\_scaler\_profile](#input\_auto\_scaler\_profile) | Cluster autoscaler tuning. scale\_down\_unneeded is how long a node must be idle before removal — short values save money and cause churn. | <pre>object({<br/>    balance_similar_node_groups   = optional(bool, true)<br/>    expander                      = optional(string, "random")<br/>    scale_down_unneeded           = optional(string, "10m")<br/>    scale_down_delay_after_add    = optional(string, "10m")<br/>    skip_nodes_with_local_storage = optional(bool, false)<br/>    skip_nodes_with_system_pods   = optional(bool, true)<br/>  })</pre> | `{}` | no |
 | <a name="input_automatic_upgrade_channel"></a> [automatic\_upgrade\_channel](#input\_automatic\_upgrade\_channel) | Automatic upgrade channel: "patch", "stable", "rapid", "node-image" or null. "patch" applies security patches within the pinned minor version and is the sane default. Null means nothing upgrades and the cluster eventually falls out of support. | `string` | `"patch"` | no |
@@ -430,7 +430,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_admin_access_summary"></a> [admin\_access\_summary](#output\_admin\_access\_summary) | How an operator actually authenticates to the API server, in plain language. Reported because a cluster nobody can reach looks identical to one that works until someone tries. |
 | <a name="output_api_server_authorized_ip_ranges"></a> [api\_server\_authorized\_ip\_ranges](#output\_api\_server\_authorized\_ip\_ranges) | The allowlist actually applied to the API server: operator addresses merged with the cluster's own egress address. Reported because the second half is invisible in the calling configuration and its absence crash-loops the node pool rather than failing the apply. |
 | <a name="output_api_server_reachable_from"></a> [api\_server\_reachable\_from](#output\_api\_server\_reachable\_from) | Who can reach the Kubernetes API server, in plain language. |

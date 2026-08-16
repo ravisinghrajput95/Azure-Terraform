@@ -160,13 +160,13 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
 
 ## Modules
@@ -176,13 +176,13 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [terraform_data.validation](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_additional_tags"></a> [additional\_tags](#input\_additional\_tags) | Extra tags merged into the mandatory set. May not override a mandatory tag, and may not collide with one by case alone — Azure treats tag keys as case-insensitive, so "Environment" and "environment" are a conflict, not two tags. | `map(string)` | `{}` | no |
 | <a name="input_cost_center"></a> [cost\_center](#input\_cost\_center) | Chargeback code this workload bills to. Azure Cost Management groups by this tag, so an inconsistent value here silently breaks cost allocation. | `string` | n/a | yes |
 | <a name="input_criticality"></a> [criticality](#input\_criticality) | Business criticality. Drives backup retention, alert routing and change-approval requirements downstream. | `string` | n/a | yes |
@@ -196,7 +196,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_criticality"></a> [criticality](#output\_criticality) | Business criticality value, for modules that size backup retention or alert severity from it. |
 | <a name="output_data_classification"></a> [data\_classification](#output\_data\_classification) | Data classification value, for modules that gate encryption or audit settings on it. |
 | <a name="output_mandatory_tag_keys"></a> [mandatory\_tag\_keys](#output\_mandatory\_tag\_keys) | Keys of the mandatory tag set. Feed this to a policy or compliance check that verifies tag presence across the subscription. |

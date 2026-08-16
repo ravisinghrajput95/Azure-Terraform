@@ -206,14 +206,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -223,7 +223,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_application_gateway.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/application_gateway) | resource |
 | [azurerm_public_ip.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/public_ip) | resource |
 | [azurerm_web_application_firewall_policy.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/web_application_firewall_policy) | resource |
@@ -231,7 +231,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_backend_http_settings"></a> [backend\_http\_settings](#input\_backend\_http\_settings) | Map of settings name to configuration. `probe_name` binds a health probe; without one the gateway uses a default probe against "/", which returns 404 on most applications and marks every backend unhealthy. | <pre>map(object({<br/>    port                                = number<br/>    protocol                            = optional(string, "Https")<br/>    cookie_based_affinity               = optional(string, "Disabled")<br/>    request_timeout                     = optional(number, 30)<br/>    probe_name                          = optional(string)<br/>    host_name                           = optional(string)<br/>    pick_host_name_from_backend_address = optional(bool, false)<br/>  }))</pre> | `{}` | no |
 | <a name="input_backend_pools"></a> [backend\_pools](#input\_backend\_pools) | Map of pool name to { fqdns, ip\_addresses }. Leave both empty for a pool a scale set attaches itself to. | <pre>map(object({<br/>    fqdns        = optional(list(string), [])<br/>    ip_addresses = optional(list(string), [])<br/>  }))</pre> | <pre>{<br/>  "default": {}<br/>}</pre> | no |
 | <a name="input_http2_enabled"></a> [http2\_enabled](#input\_http2\_enabled) | Enable HTTP/2 for client connections. Note the gateway always speaks HTTP/1.1 to the backend regardless. | `bool` | `true` | no |
@@ -263,7 +263,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_backend_pool_ids"></a> [backend\_pool\_ids](#output\_backend\_pool\_ids) | Map of pool name to ID. Pass the relevant ID to the vm module's scale set network configuration. |
 | <a name="output_capacity_range"></a> [capacity\_range](#output\_capacity\_range) | Autoscale bounds. max\_capacity is the ceiling on ingress throughput — a gateway at maximum queues and then sheds traffic while the backend sits idle, which reads as an application problem. |
 | <a name="output_id"></a> [id](#output\_id) | ARM resource ID of the gateway. Diagnostic settings target this. |

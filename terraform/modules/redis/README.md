@@ -209,14 +209,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -226,7 +226,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_managed_redis.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_redis) | resource |
 | [azurerm_managed_redis_access_policy_assignment.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_redis_access_policy_assignment) | resource |
 | [azurerm_private_endpoint.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_endpoint) | resource |
@@ -234,7 +234,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_access_keys_authentication_enabled"></a> [access\_keys\_authentication\_enabled](#input\_access\_keys\_authentication\_enabled) | Whether the static access keys may be used. FALSE is the stronger posture — clients then authenticate with a managed identity through a Redis access policy assignment. Any library or sidecar still passing a key stops working the moment this is disabled, so it is a client-side change too. | `bool` | `false` | no |
 | <a name="input_access_policy_assignments"></a> [access\_policy\_assignments](#input\_access\_policy\_assignments) | Map of assignment key to { principal\_id }. The map key is for addressing in Terraform only — Azure does not name these. Each assignment grants the built-in full data access policy; the resource exposes no policy selector, so nothing narrower is expressible today. With access keys disabled, a principal without an assignment cannot connect at all. | <pre>map(object({<br/>    principal_id = string<br/>  }))</pre> | `{}` | no |
 | <a name="input_client_protocol"></a> [client\_protocol](#input\_client\_protocol) | "Encrypted" requires TLS; "Plaintext" does not. Always Encrypted — the plaintext protocol carries the access key and every cached value in clear text. | `string` | `"Encrypted"` | no |
@@ -256,7 +256,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_access_keys_enabled"></a> [access\_keys\_enabled](#output\_access\_keys\_enabled) | Whether the static access keys work. False is the intended state — clients authenticate with a managed identity through an access policy assignment. |
 | <a name="output_access_policy_assignment_ids"></a> [access\_policy\_assignment\_ids](#output\_access\_policy\_assignment\_ids) | Map of assignment key to resource ID. With access keys disabled, this is the complete list of principals that can reach the data plane. |
 | <a name="output_availability_summary"></a> [availability\_summary](#output\_availability\_summary) | Plain-language availability posture, so the limits of the deployed configuration are visible without knowing Managed Redis semantics. |

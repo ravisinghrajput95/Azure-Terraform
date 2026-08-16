@@ -150,14 +150,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -167,14 +167,14 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_monitor_diagnostic_setting.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/monitor_diagnostic_setting) | resource |
 | [azurerm_monitor_diagnostic_categories.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/monitor_diagnostic_categories) | data source |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_enable_metrics"></a> [enable\_metrics](#input\_enable\_metrics) | Whether to collect platform metrics. Metrics are low volume relative to logs and are what most alert rules evaluate, so disabling them is rarely the right cost lever. | `bool` | `true` | no |
 | <a name="input_excluded_log_categories"></a> [excluded\_log\_categories](#input\_excluded\_log\_categories) | Log categories to omit. Only meaningful with log\_selection = "explicit", because a category group is all-or-nothing. Use for a genuinely high-volume, low-value category — the usual reason a workspace bill grows unexpectedly. | `list(string)` | `[]` | no |
 | <a name="input_excluded_metric_categories"></a> [excluded\_metric\_categories](#input\_excluded\_metric\_categories) | Metric categories to omit. Most resource types expose only "AllMetrics". | `list(string)` | `[]` | no |
@@ -188,7 +188,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_available_log_categories"></a> [available\_log\_categories](#output\_available\_log\_categories) | Log categories the target resource type exposes, as discovered at plan time. |
 | <a name="output_available_log_groups"></a> [available\_log\_groups](#output\_available\_log\_groups) | Log category groups the target exposes, typically "allLogs" and sometimes "audit". |
 | <a name="output_available_metrics"></a> [available\_metrics](#output\_available\_metrics) | Metric categories the target exposes. Most resource types expose only "AllMetrics". |

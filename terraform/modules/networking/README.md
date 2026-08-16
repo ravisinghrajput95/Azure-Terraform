@@ -187,14 +187,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -204,7 +204,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_nat_gateway.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/nat_gateway) | resource |
 | [azurerm_nat_gateway_public_ip_association.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/nat_gateway_public_ip_association) | resource |
 | [azurerm_public_ip.nat](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/public_ip) | resource |
@@ -215,7 +215,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_address_space"></a> [address\_space](#input\_address\_space) | VNet address space. One non-overlapping /16 per environment — see docs/NETWORKING.md. Ranges are spaced so a future peering, VPN or ExpressRoute link cannot collide, which is the one networking mistake that cannot be fixed without rebuilding every resource in the subnet. | `list(string)` | n/a | yes |
 | <a name="input_dns_servers"></a> [dns\_servers](#input\_dns\_servers) | Custom DNS servers for the VNet. Leave empty to use Azure-provided DNS, which is required for private endpoint resolution via private DNS zones. Setting custom servers without forwarding to 168.63.129.16 breaks private endpoint name resolution. | `list(string)` | `[]` | no |
 | <a name="input_enable_nat_gateway"></a> [enable\_nat\_gateway](#input\_enable\_nat\_gateway) | Deploy a NAT Gateway for outbound connectivity. Pass the profile module's enable\_nat\_gateway. Roughly $33/month plus $0.045/GB processed, against roughly $912/month for Azure Firewall. | `bool` | `false` | no |
@@ -232,7 +232,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_address_space"></a> [address\_space](#output\_address\_space) | VNet address space. |
 | <a name="output_location"></a> [location](#output\_location) | Region the network was created in. |
 | <a name="output_nat_associated_subnets"></a> [nat\_associated\_subnets](#output\_nat\_associated\_subnets) | Subnets whose egress routes through the NAT Gateway. A subnet absent from this list, with no firewall route, has no outbound internet access — default outbound access was retired in September 2025. |

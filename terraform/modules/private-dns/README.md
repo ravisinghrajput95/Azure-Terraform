@@ -166,14 +166,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -183,14 +183,14 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_private_dns_zone.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_dns_zone) | resource |
 | [azurerm_private_dns_zone_virtual_network_link.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_dns_zone_virtual_network_link) | resource |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_additional_zones"></a> [additional\_zones](#input\_additional\_zones) | Raw privatelink zone names for services not covered by the service-key table. Use sparingly — a typo here has no error path and results in a private endpoint that silently resolves to a public address. Prefer extending the module's table. | `list(string)` | `[]` | no |
 | <a name="input_location_hint"></a> [location\_hint](#input\_location\_hint) | Normalised region name, required only when requesting a service whose privatelink zone embeds a region: sql\_mi, aks and backup. For example SQL Managed Instance uses privatelink.<region>.database.windows.net. Leave null when none of those services are requested. | `string` | `null` | no |
 | <a name="input_registration_enabled"></a> [registration\_enabled](#input\_registration\_enabled) | Whether VMs in the linked VNet auto-register their own A records in these<br/>zones.<br/><br/>Left FALSE, and it should stay false for privatelink zones. Two reasons:<br/><br/>  1. A privatelink zone holds records Azure manages on behalf of private<br/>     endpoints. VM records do not belong in it, and a VM registering a name<br/>     that collides with a service record breaks resolution for everyone.<br/><br/>  2. Azure permits at most ONE registration-enabled link per virtual<br/>     network across ALL zones. Spending it on a privatelink zone means it<br/>     is unavailable for a genuine VM-registration zone later. | `bool` | `false` | no |
@@ -203,7 +203,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_link_count"></a> [link\_count](#output\_link\_count) | Total number of virtual network links created — one per zone per VNet. |
 | <a name="output_linked_virtual_network_ids"></a> [linked\_virtual\_network\_ids](#output\_linked\_virtual\_network\_ids) | Virtual networks these zones are linked to. A zone with no link is invisible to a VNet's resolver, so its records have no effect there. |
 | <a name="output_registration_enabled"></a> [registration\_enabled](#output\_registration\_enabled) | Whether linked VNets auto-register VM records into these zones. Should be false for privatelink zones: Azure permits only one registration-enabled link per VNet across all zones, and VM records do not belong in a zone Azure manages for private endpoints. |

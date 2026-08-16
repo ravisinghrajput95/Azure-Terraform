@@ -120,14 +120,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -137,13 +137,13 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_log_analytics_workspace.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/log_analytics_workspace) | resource |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_allow_resource_only_permissions"></a> [allow\_resource\_only\_permissions](#input\_allow\_resource\_only\_permissions) | Whether a principal with read access to a resource can read that resource's logs without workspace-level permissions. Keeping this true supports least privilege: an application team reads its own logs without being granted the whole workspace. | `bool` | `true` | no |
 | <a name="input_daily_quota_gb"></a> [daily\_quota\_gb](#input\_daily\_quota\_gb) | Daily ingestion cap in GB, or -1 for uncapped. Pass the profile module's log\_daily\_quota\_gb. WARNING: when the cap is reached, ingestion STOPS for the rest of the UTC day and the dropped data is not recoverable — including security signals. Appropriate in dev to protect a free-tier allowance; never in production. | `number` | `-1` | no |
 | <a name="input_enable_system_assigned_identity"></a> [enable\_system\_assigned\_identity](#input\_enable\_system\_assigned\_identity) | Attach a system-assigned managed identity. Required for customer-managed key encryption and for the workspace to authenticate outbound to other services. Costs nothing when unused. | `bool` | `true` | no |
@@ -161,7 +161,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_daily_quota_gb"></a> [daily\_quota\_gb](#output\_daily\_quota\_gb) | The configured daily cap in GB, or -1 when uncapped. |
 | <a name="output_id"></a> [id](#output\_id) | Full ARM resource ID. This is what diagnostic settings, Data Collection Rules and alert rules target. |
 | <a name="output_ingestion_is_capped"></a> [ingestion\_is\_capped](#output\_ingestion\_is\_capped) | Whether a daily ingestion cap is set. When true, ingestion STOPS for the remainder of the UTC day once the cap is hit and the dropped data is unrecoverable. |

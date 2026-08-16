@@ -150,13 +150,13 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
 
 ## Modules
@@ -166,13 +166,13 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [terraform_data.validation](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_compute_tiers"></a> [compute\_tiers](#input\_compute\_tiers) | Subset of var.tiers that actually host compute and therefore need scale set and managed identity names. Kept separate so the module does not emit names for combinations that never exist (there is no scale set in the private endpoint subnet). Must be a subset of var.tiers. | `list(string)` | <pre>[<br/>  "app",<br/>  "biz"<br/>]</pre> | no |
 | <a name="input_environment"></a> [environment](#input\_environment) | Deployment environment. Drives both the name segment and the environment profile selected downstream. | `string` | n/a | yes |
 | <a name="input_instance"></a> [instance](#input\_instance) | Three-digit instance number, allowing a second parallel deployment of the same workload in the same region without a name collision. | `string` | `"001"` | no |
@@ -186,7 +186,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_abbreviations"></a> [abbreviations](#output\_abbreviations) | Azure CAF resource type abbreviation table. Reference this instead of typing prefixes inline. |
 | <a name="output_base"></a> [base](#output\_base) | Hyphenated name base shared by most resources, e.g. "cloudcart-prod-eus". |
 | <a name="output_base_compact"></a> [base\_compact](#output\_base\_compact) | Separator-free name base for resources that reject hyphens, e.g. "cloudcartprdeus". |

@@ -150,14 +150,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -167,7 +167,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_route.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/route) | resource |
 | [azurerm_route_table.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/route_table) | resource |
 | [azurerm_subnet_route_table_association.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet_route_table_association) | resource |
@@ -175,7 +175,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_location"></a> [location](#input\_location) | Azure region, normalised form. | `string` | n/a | yes |
 | <a name="input_resource_group_name"></a> [resource\_group\_name](#input\_resource\_group\_name) | Resource group for the route tables. Should be the "net" lifecycle scope. | `string` | n/a | yes |
 | <a name="input_route_tables"></a> [route\_tables](#input\_route\_tables) | Map of route table name to its configuration.<br/><br/>  bgp\_route\_propagation\_enabled<br/>      Whether routes learned over BGP from an ExpressRoute or VPN gateway<br/>      are applied to the associated subnets. Defaults to FALSE. Leaving it<br/>      enabled means a gateway added later can advertise a route that<br/>      bypasses the intended egress path — a firewall can be silently<br/>      circumvented by a network change made elsewhere.<br/><br/>  routes<br/>      Map of route name to { address\_prefix, next\_hop\_type,<br/>      next\_hop\_in\_ip\_address }. May be empty: a route table with no routes<br/>      is still meaningful, because disabling BGP propagation is itself a<br/>      control.<br/><br/>  subnets<br/>      Map of subnet NAME to subnet ID. A map keyed by name, not a list of<br/>      IDs, for two reasons: the key set stays known at plan time so<br/>      for\_each resolves from an empty state, and the forbidden-default-route<br/>      check can compare names without parsing them out of IDs that are<br/>      themselves unknown until apply. | <pre>map(object({<br/>    bgp_route_propagation_enabled = optional(bool, false)<br/>    subnets                       = optional(map(string), {})<br/><br/>    routes = optional(map(object({<br/>      address_prefix         = string<br/>      next_hop_type          = string<br/>      next_hop_in_ip_address = optional(string)<br/>    })), {})<br/>  }))</pre> | n/a | yes |
@@ -185,7 +185,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_associated_subnet_names"></a> [associated\_subnet\_names](#output\_associated\_subnet\_names) | Map of route table name to the subnet names it is applied to. Names rather than resource IDs, because routing is reviewed by humans. |
 | <a name="output_associations"></a> [associations](#output\_associations) | Map of "<table>/<subnet-name>" to its association detail. |
 | <a name="output_bgp_propagation_enabled_tables"></a> [bgp\_propagation\_enabled\_tables](#output\_bgp\_propagation\_enabled\_tables) | Route tables where BGP route propagation is left ON. Should normally be empty — a propagated route can be more specific than the configured default and silently divert egress away from the firewall. |

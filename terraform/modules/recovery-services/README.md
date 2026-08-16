@@ -186,14 +186,14 @@ verifiable wherever the workloads later appear.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -203,7 +203,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_backup_policy_file_share.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/backup_policy_file_share) | resource |
 | [azurerm_backup_policy_vm.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/backup_policy_vm) | resource |
 | [azurerm_recovery_services_vault.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/recovery_services_vault) | resource |
@@ -211,7 +211,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_alerts_for_all_job_failures_enabled"></a> [alerts\_for\_all\_job\_failures\_enabled](#input\_alerts\_for\_all\_job\_failures\_enabled) | Built-in vault alerting on backup job failures. Independent of the monitor module's action group — this is Azure Backup's own notification path, and it is the only one that reports a backup that silently stopped running. | `bool` | `true` | no |
 | <a name="input_alerts_for_critical_operation_failures_enabled"></a> [alerts\_for\_critical\_operation\_failures\_enabled](#input\_alerts\_for\_critical\_operation\_failures\_enabled) | Built-in vault alerting on critical operations, such as deleting backup data. | `bool` | `true` | no |
 | <a name="input_cross_region_restore_enabled"></a> [cross\_region\_restore\_enabled](#input\_cross\_region\_restore\_enabled) | Allow restore into the paired region. Requires storage\_mode\_type = "GeoRedundant" — the combination is rejected by a precondition rather than at apply, because the Azure error names only one of the two settings. | `bool` | `false` | no |
@@ -231,7 +231,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_backup_posture_summary"></a> [backup\_posture\_summary](#output\_backup\_posture\_summary) | Consolidated posture in plain language, including the states that look healthy and are not. |
 | <a name="output_file_share_policy_ids"></a> [file\_share\_policy\_ids](#output\_file\_share\_policy\_ids) | Map of file share policy name to resource ID. |
 | <a name="output_id"></a> [id](#output\_id) | Vault resource ID. |

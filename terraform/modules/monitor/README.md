@@ -470,14 +470,14 @@ Adding any of these is a new entry in `metric_alerts`, or an
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -487,7 +487,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_monitor_action_group.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/monitor_action_group) | resource |
 | [azurerm_monitor_metric_alert.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/monitor_metric_alert) | resource |
 | [azurerm_monitor_scheduled_query_rules_alert_v2.daily_cap](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/monitor_scheduled_query_rules_alert_v2) | resource |
@@ -496,7 +496,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_action_group_enabled"></a> [action\_group\_enabled](#input\_action\_group\_enabled) | Whether the action group delivers notifications. False keeps the rules and the group in place but silences delivery — useful during an incident, dangerous if forgotten, so it is reported in an output. | `bool` | `true` | no |
 | <a name="input_action_group_name"></a> [action\_group\_name](#input\_action\_group\_name) | Action group name, from naming.action\_group. Lives in the monitoring resource group so it outlives the resources it observes. | `string` | n/a | yes |
 | <a name="input_action_group_short_name"></a> [action\_group\_short\_name](#input\_action\_group\_short\_name) | Short name shown as the SMS/email sender. Azure caps this at 12 characters and rejects anything longer at apply time. | `string` | n/a | yes |
@@ -529,7 +529,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_action_group_id"></a> [action\_group\_id](#output\_action\_group\_id) | Action group resource ID. Any alert rule built outside this module attaches to it through this. |
 | <a name="output_action_group_name"></a> [action\_group\_name](#output\_action\_group\_name) | Action group name. |
 | <a name="output_alert_rule_ids"></a> [alert\_rule\_ids](#output\_alert\_rule\_ids) | Map of alert key to resource ID. |

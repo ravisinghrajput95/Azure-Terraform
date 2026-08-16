@@ -213,7 +213,7 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 | <a name="requirement_time"></a> [time](#requirement\_time) | ~> 0.12 |
@@ -221,7 +221,7 @@ hand.
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 | <a name="provider_time"></a> [time](#provider\_time) | 0.14.0 |
 
@@ -232,7 +232,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_private_endpoint.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_endpoint) | resource |
 | [azurerm_role_assignment.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
 | [azurerm_storage_account.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account) | resource |
@@ -242,7 +242,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_access_tier"></a> [access\_tier](#input\_access\_tier) | Default blob access tier, "Hot" or "Cool". Cool has lower storage cost and higher access cost, plus an early-deletion charge before 30 days — it loses money for anything read regularly. | `string` | `"Hot"` | no |
 | <a name="input_account_kind"></a> [account\_kind](#input\_account\_kind) | "StorageV2" is correct for essentially all new accounts. The legacy Storage and BlobStorage kinds lack features and cannot be upgraded in place without migration. | `string` | `"StorageV2"` | no |
 | <a name="input_account_replication_type"></a> [account\_replication\_type](#input\_account\_replication\_type) | Redundancy. Pass the profile's storage\_replication\_type. LRS keeps three copies in one datacentre; ZRS spreads across zones in one region; GZRS adds a paired region. Each step up roughly doubles the storage rate. | `string` | `"LRS"` | no |
@@ -279,7 +279,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_allows_public_blob_access"></a> [allows\_public\_blob\_access](#output\_allows\_public\_blob\_access) | Whether any container in this account could be made anonymously readable. False forecloses the most common storage data-exposure incident account-wide, regardless of per-container settings. |
 | <a name="output_container_ids"></a> [container\_ids](#output\_container\_ids) | Map of container name to resource ID. |
 | <a name="output_container_names"></a> [container\_names](#output\_container\_names) | Containers created in this account. |

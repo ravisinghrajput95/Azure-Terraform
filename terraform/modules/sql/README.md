@@ -182,14 +182,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -199,7 +199,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_mssql_database.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/mssql_database) | resource |
 | [azurerm_mssql_firewall_rule.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/mssql_firewall_rule) | resource |
 | [azurerm_mssql_server.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/mssql_server) | resource |
@@ -208,7 +208,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_allowed_ip_rules"></a> [allowed\_ip\_rules](#input\_allowed\_ip\_rules) | Map of firewall rule name to { start\_ip, end\_ip }. Only meaningful when the public endpoint is enabled. Note that a rule of 0.0.0.0-0.0.0.0 is Azure's special 'allow all Azure services' entry, not a real address, and this module rejects it. | <pre>map(object({<br/>    start_ip = string<br/>    end_ip   = string<br/>  }))</pre> | `{}` | no |
 | <a name="input_auto_pause_delay_in_minutes"></a> [auto\_pause\_delay\_in\_minutes](#input\_auto\_pause\_delay\_in\_minutes) | Minutes of inactivity before a serverless database pauses, or -1 to never pause. Minimum 60. Paused databases bill for storage only, which is what makes serverless near-free in a dev environment used a few hours a day. The cost is a cold-start delay of several seconds on the first connection after a pause. | `number` | `60` | no |
 | <a name="input_azuread_authentication_only"></a> [azuread\_authentication\_only](#input\_azuread\_authentication\_only) | Disable SQL authentication entirely. Should be TRUE. Setting false reintroduces a password that must be generated, stored and rotated — and that lands in Terraform state in plaintext. | `bool` | `true` | no |
@@ -243,7 +243,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_administrator_is_individual"></a> [administrator\_is\_individual](#output\_administrator\_is\_individual) | True when the Entra administrator is a named user rather than a group. A governance weakness rather than a technical fault: it ties database administration to one person's account, which breaks when they leave and cannot be reviewed as a role. Prefer a group. |
 | <a name="output_auto_pause_delay_in_minutes"></a> [auto\_pause\_delay\_in\_minutes](#output\_auto\_pause\_delay\_in\_minutes) | Minutes of inactivity before pausing, -1 for never, or null on a provisioned SKU. A paused database bills for storage only — the reason serverless is near-free in an environment used a few hours a day. The cost is a cold-start delay of several seconds on the first connection after a pause. |
 | <a name="output_azuread_authentication_only"></a> [azuread\_authentication\_only](#output\_azuread\_authentication\_only) | Whether SQL authentication is disabled entirely. True means no password was ever set and none can be used. Note that Azure still records a placeholder administratorLogin value on the server — it is an artefact, not a usable credential, because SQL auth is off. |

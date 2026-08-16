@@ -205,14 +205,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -222,7 +222,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_key_vault.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/key_vault) | resource |
 | [azurerm_private_endpoint.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_endpoint) | resource |
 | [azurerm_role_assignment.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
@@ -230,7 +230,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_allowed_ip_rules"></a> [allowed\_ip\_rules](#input\_allowed\_ip\_rules) | Public IPv4 addresses or CIDRs permitted to reach the data plane. Only meaningful when public\_network\_access\_enabled is true. Note that Azure rejects /31 and /32 suffixes here — supply a bare address for a single host. | `list(string)` | `[]` | no |
 | <a name="input_allowed_subnet_ids"></a> [allowed\_subnet\_ids](#input\_allowed\_subnet\_ids) | Subnet IDs permitted to reach the data plane through a service endpoint. Distinct from the private endpoint path — this is for subnets reaching the PUBLIC endpoint over the Microsoft backbone, and requires Microsoft.KeyVault service endpoints on those subnets. | `list(string)` | `[]` | no |
 | <a name="input_create_private_endpoint"></a> [create\_private\_endpoint](#input\_create\_private\_endpoint) | Whether to create a private endpoint. A STATIC boolean, deliberately: deriving this from `private_endpoint_subnet_id != null` makes count depend on a value that is unknown until apply, which fails any plan from an empty state — so the module would work incrementally and break for a fresh environment. | `bool` | `true` | no |
@@ -256,7 +256,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_granted_principal_ids"></a> [granted\_principal\_ids](#output\_granted\_principal\_ids) | Principal IDs holding a role on this vault, with the role granted. A single artefact for reviewing who can read the secrets. |
 | <a name="output_id"></a> [id](#output\_id) | ARM resource ID of the vault. Role assignment scopes and diagnostic settings target this. |
 | <a name="output_name"></a> [name](#output\_name) | Vault name. |

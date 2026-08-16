@@ -110,14 +110,14 @@ hand.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 
 ## Modules
@@ -127,14 +127,14 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azurerm_management_lock.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) | resource |
 | [azurerm_resource_group.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group) | resource |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_enable_resource_locks"></a> [enable\_resource\_locks](#input\_enable\_resource\_locks) | Whether to apply management locks. Pass the profile module's enable\_resource\_locks output. Locks are off in dev because they block `terraform destroy`, which is the primary cost control on a credit-limited subscription. | `bool` | `false` | no |
 | <a name="input_location"></a> [location](#input\_location) | Azure region, normalised form (e.g. "eastus"). Pass the naming module's location\_normalized output rather than the raw input, so that "East US" and "eastus" cannot produce two different values in state. | `string` | n/a | yes |
 | <a name="input_lock_level"></a> [lock\_level](#input\_lock\_level) | Lock severity. CanNotDelete permits reads and updates but blocks deletion. ReadOnly blocks updates too, which breaks Terraform's ability to manage tags and most other properties — use it only for a genuinely frozen resource group. | `string` | `"CanNotDelete"` | no |
@@ -145,7 +145,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_ids"></a> [ids](#output\_ids) | Map of lifecycle scope to resource group ID. Use these for role assignment scopes, diagnostic settings and management locks. |
 | <a name="output_location"></a> [location](#output\_location) | Region the groups were created in. Re-exported so downstream modules take their location from the created resource rather than re-deriving it, which keeps a single source of truth. |
 | <a name="output_lock_ids"></a> [lock\_ids](#output\_lock\_ids) | Map of lifecycle scope to management lock ID. |
