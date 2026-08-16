@@ -126,7 +126,14 @@ variable "network_security_groups" {
     condition = alltrue(flatten([
       for nsg in values(var.network_security_groups) : [
         for rule in values(nsg.rules) :
-        rule.description == null || length(coalesce(rule.description, "")) <= 140
+        # try(), not coalesce(rule.description, ""). coalesce returns the first
+        # non-null, NON-EMPTY argument, so coalesce(null, "") has nothing valid
+        # to return and fails outright — and because `||` does not reliably
+        # short-circuit, that ran for every rule whose description was null.
+        # description is optional, so this rejected the ordinary case: on
+        # Terraform 1.9.8, which CI pins, any rule without a description made
+        # the whole module fail to evaluate.
+        rule.description == null || try(length(rule.description), 0) <= 140
       ]
     ]))
     error_message = "Security rule descriptions are limited to 140 characters by Azure."
