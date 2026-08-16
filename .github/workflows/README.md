@@ -7,7 +7,7 @@ action.
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | [`terraform-ci.yml`](terraform-ci.yml) | PR, push to main | fmt, validate, unit tests, TFLint, Trivy + Checkov, terraform-docs, Infracost, plan |
-| [`terraform-drift.yml`](terraform-drift.yml) | Daily 06:00 UTC, manual | Read-only plan per environment; opens/updates a GitHub issue on drift |
+| [`terraform-drift.yml`](terraform-drift.yml) | **Manual only** — the daily schedule is commented out | Read-only plan per environment; opens/updates a GitHub issue on drift |
 
 ---
 
@@ -131,7 +131,15 @@ one environment otherwise deadlock.
 
 ## Drift detection
 
-Runs daily and opens a GitHub issue when reality has diverged.
+**The daily schedule is currently commented out.** `dev` was decommissioned on
+2026-08-14, `qa`, `stage` and `prod` have never been applied, and no OIDC
+variables are configured — so every 06:00 run failed at `azure/login` and said
+nothing about drift. This workflow's own rule is that a scheduled job failing
+against a nonexistent environment trains people to ignore it, and that is what
+it had become. Re-enable the `cron` in `terraform-drift.yml` once an
+environment is deployed and the variables below are set.
+
+When enabled, it runs daily and opens a GitHub issue when reality has diverged.
 
 Drift matters because it is usually evidence of something else — a portal
 change made during an incident and never brought back into code, an Azure

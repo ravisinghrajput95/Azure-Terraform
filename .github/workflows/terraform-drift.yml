@@ -15,11 +15,26 @@
 
 name: Drift detection
 
+# The daily schedule is commented out, not deleted, and this workflow's own
+# rationale is the reason: "a scheduled job failing against a nonexistent
+# environment trains people to ignore it."
+#
+# That is exactly what it became. dev was decommissioned on 2026-08-14, qa,
+# stage and prod have never been applied, and no OIDC variables are configured,
+# so every 06:00 run failed at azure/login and reported nothing about drift.
+# A red alarm every morning that cannot mean anything is worse than no alarm,
+# because it is the one that gets filtered to trash — and then the real one
+# goes with it.
+#
+# RE-ENABLE the cron below when an environment is actually deployed and
+# AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID are set. Drift
+# detection is worth having; it is only worth having against something that
+# exists. workflow_dispatch stays on so it can still be run by hand.
 on:
-  schedule:
-    # 06:00 UTC daily — before the working day, so a drift issue is waiting
-    # rather than arriving mid-change.
-    - cron: "0 6 * * *"
+  # schedule:
+  #   # 06:00 UTC daily — before the working day, so a drift issue is waiting
+  #   # rather than arriving mid-change.
+  #   - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       environment:
@@ -59,7 +74,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A manual run without credentials should say so, not fail inside
+      # azure/login with "Not all values are present".
+      - name: Check for Azure credentials
+        id: guard
+        run: echo "enabled=${{ vars.AZURE_CLIENT_ID != '' && vars.AZURE_TENANT_ID != '' && vars.AZURE_SUBSCRIPTION_ID != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Note when skipped
+        if: steps.guard.outputs.enabled != 'true'
+        run: |
+          echo "::notice::Azure OIDC variables are not set — drift cannot be checked. See .github/workflows/README.md."
+
       - uses: azure/login@v2
+        if: steps.guard.outputs.enabled == 'true'
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -71,6 +98,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Terraform init
+        if: steps.guard.outputs.enabled == 'true'
         working-directory: terraform/environments/${{ matrix.environment }}
         env:
           ARM_USE_OIDC: "true"
@@ -91,6 +119,7 @@ jobs:
       # The distinction matters: an error is not the same as drift, and
       # conflating them either hides failures or cries wolf.
       - name: Plan
+        if: steps.guard.outputs.enabled == 'true'
         id: plan
         working-directory: terraform/environments/${{ matrix.environment }}
         env:
@@ -120,6 +149,7 @@ jobs:
           tail -100 plan.txt
 
       - name: Summary
+        if: steps.guard.outputs.enabled == 'true'
         working-directory: terraform/environments/${{ matrix.environment }}
         run: |
           {
@@ -140,7 +170,7 @@ jobs:
       # job that opens a new issue every morning gets filtered to trash within
       # a week.
       - name: Open or update a drift issue
-        if: steps.plan.outputs.status == 'drift' || steps.plan.outputs.status == 'error'
+        if: steps.guard.outputs.enabled == 'true' && (steps.plan.outputs.status == 'drift' || steps.plan.outputs.status == 'error')
         uses: actions/github-script@v7
         with:
           script: |
@@ -210,7 +240,7 @@ jobs:
       # Closing on recovery is what keeps the signal trustworthy: an issue that
       # stays open after the problem is fixed teaches people to ignore it.
       - name: Close the drift issue when clean
-        if: steps.plan.outputs.status == 'clean'
+        if: steps.guard.outputs.enabled == 'true' && steps.plan.outputs.status == 'clean'
         uses: actions/github-script@v7
         with:
           script: |
@@ -239,7 +269,7 @@ jobs:
             }
 
       - name: Fail the run on drift
-        if: steps.plan.outputs.status != 'clean'
+        if: steps.guard.outputs.enabled == 'true' && steps.plan.outputs.status != 'clean'
         run: |
           echo "::error::Drift check finished with status ${{ steps.plan.outputs.status }}"
           exit 1
