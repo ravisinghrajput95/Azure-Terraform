@@ -179,3 +179,68 @@ verifiable wherever the workloads later appear.
 - **VMs or Azure Files**, if either ever exists — this vault and these policies,
   plus `azurerm_backup_protected_vm` or `azurerm_backup_protected_file_share`
   alongside the workload.
+
+---
+
+<!-- BEGIN_TF_DOCS -->
+## Requirements
+
+| Name | Version |
+| ---- | ------- |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9 |
+| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
+
+## Providers
+
+| Name | Version |
+| ---- | ------- |
+| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
+
+## Modules
+
+No modules.
+
+## Resources
+
+| Name | Type |
+| ---- | ---- |
+| [azurerm_backup_policy_file_share.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/backup_policy_file_share) | resource |
+| [azurerm_backup_policy_vm.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/backup_policy_vm) | resource |
+| [azurerm_recovery_services_vault.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/recovery_services_vault) | resource |
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| <a name="input_alerts_for_all_job_failures_enabled"></a> [alerts\_for\_all\_job\_failures\_enabled](#input\_alerts\_for\_all\_job\_failures\_enabled) | Built-in vault alerting on backup job failures. Independent of the monitor module's action group — this is Azure Backup's own notification path, and it is the only one that reports a backup that silently stopped running. | `bool` | `true` | no |
+| <a name="input_alerts_for_critical_operation_failures_enabled"></a> [alerts\_for\_critical\_operation\_failures\_enabled](#input\_alerts\_for\_critical\_operation\_failures\_enabled) | Built-in vault alerting on critical operations, such as deleting backup data. | `bool` | `true` | no |
+| <a name="input_cross_region_restore_enabled"></a> [cross\_region\_restore\_enabled](#input\_cross\_region\_restore\_enabled) | Allow restore into the paired region. Requires storage\_mode\_type = "GeoRedundant" — the combination is rejected by a precondition rather than at apply, because the Azure error names only one of the two settings. | `bool` | `false` | no |
+| <a name="input_file_share_backup_policies"></a> [file\_share\_backup\_policies](#input\_file\_share\_backup\_policies) | Azure Files backup policies, keyed by policy name. Same weekday-alignment rules as VM policies. | <pre>map(object({<br/>    frequency = optional(string, "Daily")<br/>    time      = optional(string, "23:00")<br/>    timezone  = optional(string, "UTC")<br/><br/>    retention_daily = optional(number)<br/><br/>    retention_weekly = optional(object({<br/>      count    = number<br/>      weekdays = set(string)<br/>    }))<br/>  }))</pre> | `{}` | no |
+| <a name="input_immutability"></a> [immutability](#input\_immutability) | Immutability state: "Disabled", "Unlocked" or "Locked".<br/><br/>"Locked" is IRREVERSIBLE. Once locked, recovery points cannot be deleted<br/>or shortened by anyone — including a subscription owner, including<br/>Microsoft support — for the whole of their retention. It is the correct<br/>posture against ransomware and the wrong one anywhere a mistake needs<br/>undoing. Requires explicit acknowledgement. | `string` | `"Disabled"` | no |
+| <a name="input_immutability_lock_acknowledged"></a> [immutability\_lock\_acknowledged](#input\_immutability\_lock\_acknowledged) | Explicit acknowledgement that immutability = "Locked" is irreversible. Required only for that value, so the irreversible choice cannot be made by editing one word. | `bool` | `false` | no |
+| <a name="input_location"></a> [location](#input\_location) | Azure region. A vault can only protect resources in its OWN region, so this must match the workloads it backs up. | `string` | n/a | yes |
+| <a name="input_name"></a> [name](#input\_name) | Vault name, from naming.recovery\_services\_vault. Unique within the resource group. | `string` | n/a | yes |
+| <a name="input_public_network_access_enabled"></a> [public\_network\_access\_enabled](#input\_public\_network\_access\_enabled) | Whether the vault accepts traffic from public networks. Backup traffic from Azure resources does not need this, but disabling it without a private endpoint blocks management operations from an operator machine. | `bool` | `true` | no |
+| <a name="input_resource_group_name"></a> [resource\_group\_name](#input\_resource\_group\_name) | Resource group. Should be the "mon" lifecycle scope — the vault must outlive the resources it protects, so it does not belong in the app group that gets torn down. | `string` | n/a | yes |
+| <a name="input_sku"></a> [sku](#input\_sku) | Vault SKU. "Standard" for Recovery Services; "RS0" is the legacy tier and should not be used for new vaults. | `string` | `"Standard"` | no |
+| <a name="input_storage_mode_type"></a> [storage\_mode\_type](#input\_storage\_mode\_type) | Backup storage redundancy.<br/><br/>Cannot be changed once ANY item is protected in the vault — Azure rejects<br/>the update, and the only remedy is a new vault, which means losing the<br/>existing recovery points. Choose it deliberately at creation.<br/><br/>GeoRedundant costs materially more than LocallyRedundant and is the Azure<br/>default, so leaving it unset in a cost-sensitive environment is an<br/>expensive silence. | `string` | `"LocallyRedundant"` | no |
+| <a name="input_system_assigned_identity_enabled"></a> [system\_assigned\_identity\_enabled](#input\_system\_assigned\_identity\_enabled) | Enable a system-assigned managed identity. Required for customer-managed keys and for cross-subscription restore. | `bool` | `true` | no |
+| <a name="input_tags"></a> [tags](#input\_tags) | Tags from the tags module. | `map(string)` | n/a | yes |
+| <a name="input_vm_backup_policies"></a> [vm\_backup\_policies](#input\_vm\_backup\_policies) | Virtual machine backup policies, keyed by policy name.<br/><br/>The retention weekday alignment is the reason this module validates as much<br/>as it does. On a Weekly schedule, a retention rule naming a weekday the<br/>backup does not run on retains NOTHING — Azure accepts the policy, shows it<br/>as valid, and silently keeps no long-term recovery points at all. | <pre>map(object({<br/>    frequency = optional(string, "Daily")<br/>    time      = optional(string, "23:00")<br/>    timezone  = optional(string, "UTC")<br/><br/>    # Required when frequency is "Weekly"; ignored when Daily.<br/>    weekdays = optional(set(string), [])<br/><br/>    instant_restore_retention_days = optional(number, 2)<br/><br/>    retention_daily = optional(number)<br/><br/>    retention_weekly = optional(object({<br/>      count    = number<br/>      weekdays = set(string)<br/>    }))<br/><br/>    retention_monthly = optional(object({<br/>      count    = number<br/>      weekdays = set(string)<br/>      weeks    = set(string)<br/>    }))<br/><br/>    retention_yearly = optional(object({<br/>      count    = number<br/>      months   = set(string)<br/>      weekdays = set(string)<br/>      weeks    = set(string)<br/>    }))<br/>  }))</pre> | `{}` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| <a name="output_backup_posture_summary"></a> [backup\_posture\_summary](#output\_backup\_posture\_summary) | Consolidated posture in plain language, including the states that look healthy and are not. |
+| <a name="output_file_share_policy_ids"></a> [file\_share\_policy\_ids](#output\_file\_share\_policy\_ids) | Map of file share policy name to resource ID. |
+| <a name="output_id"></a> [id](#output\_id) | Vault resource ID. |
+| <a name="output_immutability"></a> [immutability](#output\_immutability) | Immutability state. "Locked" is irreversible and cannot be undone by anyone, at any level. |
+| <a name="output_location"></a> [location](#output\_location) | Vault region. A vault protects resources in its OWN region only, so this constrains what it can ever back up. |
+| <a name="output_name"></a> [name](#output\_name) | Vault name. Backup protection resources reference the vault by name plus resource group rather than by ID. |
+| <a name="output_principal_id"></a> [principal\_id](#output\_principal\_id) | System-assigned identity principal ID, or null when the identity is disabled. Grant this access when the vault must reach a customer-managed key. |
+| <a name="output_protected_item_count"></a> [protected\_item\_count](#output\_protected\_item\_count) | Always zero. This module creates policies, never protected items — binding a workload to a policy belongs with that workload, not with a vault whose whole purpose is to outlive it. |
+| <a name="output_resource_group_name"></a> [resource\_group\_name](#output\_resource\_group\_name) | Resource group containing the vault. |
+| <a name="output_storage_mode_type"></a> [storage\_mode\_type](#output\_storage\_mode\_type) | Backup storage redundancy. Cannot be changed once any item is protected — the remedy is a new vault, which means losing existing recovery points. |
+| <a name="output_vm_policy_ids"></a> [vm\_policy\_ids](#output\_vm\_policy\_ids) | Map of VM policy name to resource ID. A protected VM references one of these. |
+<!-- END_TF_DOCS -->

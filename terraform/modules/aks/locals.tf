@@ -94,12 +94,6 @@ locals {
   # Network policy requires Azure CNI.
   policy_without_cni = var.network_policy != null && var.network_plugin != "azure"
 
-  # userDefinedRouting requires egress to already exist on the subnet's route
-  # table. Selecting it without one leaves nodes unable to reach the control
-  # plane, and the cluster fails to provision with an error about node
-  # registration rather than routing.
-  requires_existing_egress = var.outbound_type == "userDefinedRouting"
-
   # dns_service_ip must sit inside service_cidr. Azure rejects the mismatch
   # with a message naming neither value.
   dns_ip_octets            = split(".", var.dns_service_ip)

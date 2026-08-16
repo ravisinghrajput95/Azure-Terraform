@@ -291,8 +291,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Tags on this action carry a `v` prefix. `@0.28.0` was never a resolvable
+      # ref, so this step failed with "unable to find version" on every run it
+      # ever reached — which was none, until the validate job started passing.
       - name: Trivy — misconfiguration scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: terraform/

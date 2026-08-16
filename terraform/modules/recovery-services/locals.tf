@@ -35,11 +35,6 @@ locals {
 ################################################################################
 
 locals {
-  all_policies = merge(
-    { for k, p in var.vm_backup_policies : "vm/${k}" => p },
-    { for k, p in var.file_share_backup_policies : "fileshare/${k}" => p },
-  )
-
   weekly_vm_policies = {
     for k, p in var.vm_backup_policies : k => p if p.frequency == "Weekly"
   }

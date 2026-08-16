@@ -4,7 +4,6 @@
 
 locals {
   sku_family = split("_", var.sku_name)[0]
-  sku_size   = split("_", var.sku_name)[1]
 
   is_flash_optimized = local.sku_family == "FlashOptimized"
 

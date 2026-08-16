@@ -31,8 +31,12 @@ locals {
 
   zone_redundancy_unsupported = var.zone_redundant && !local.supports_zone_redundancy
 
-  # Serverless-only settings applied to a provisioned SKU are rejected.
-  serverless_settings_on_provisioned = !local.is_serverless && var.auto_pause_delay_in_minutes != -1
+  # There is deliberately no serverless_settings_on_provisioned check here.
+  # main.tf already passes null for auto_pause_delay_in_minutes and min_capacity
+  # unless the SKU is serverless, so the rejected combination cannot reach
+  # Azure. A precondition would also have been wrong: the variable defaults to
+  # 60, not -1, so it would have fired on every provisioned environment —
+  # qa, stage and prod — for a config the module already neutralises.
 }
 
 ################################################################################
