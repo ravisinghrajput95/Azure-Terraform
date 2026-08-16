@@ -83,11 +83,21 @@ locals {
     RouteServerSubnet             = 27
   }
 
+  # try() around the index because `&&` is not guaranteed to short-circuit. On
+  # Terraform 1.9.8 the right side is evaluated for EVERY subnet, including the
+  # ordinary ones that are not Azure-reserved names, and indexing this object
+  # with a key it does not hold fails with "Invalid index". That takes the
+  # whole module down rather than skipping the row.
+  #
+  # It was invisible because `terraform validate` does not evaluate this — the
+  # variables are unknown — so validation passed while any real plan against a
+  # normally-named subnet would have failed. Nothing exercised it until this
+  # module got its first tests. Same defect as monitor/locals.tf.
   undersized_reserved_subnets = sort([
     for key, bounds in local.subnet_bounds :
-    "${key} is /${bounds.prefix} but requires /${local.reserved_subnet_min_prefix[key]} or larger"
+    "${key} is /${bounds.prefix} but requires /${try(local.reserved_subnet_min_prefix[key], 0)} or larger"
     if contains(keys(local.reserved_subnet_min_prefix), key)
-    && bounds.prefix > local.reserved_subnet_min_prefix[key]
+    && bounds.prefix > try(local.reserved_subnet_min_prefix[key], 128)
   ])
 
   # NAT Gateway association is not supported on these. Azure Bastion and Azure
