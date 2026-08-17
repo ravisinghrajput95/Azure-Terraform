@@ -112,11 +112,11 @@ make plan ENV=dev       # needs credentials
 
 ## What is verified
 
-**361 tests** run with `mock_provider` — no credentials, no backend, nothing
+**369 tests** run with `mock_provider` — no credentials, no backend, nothing
 created. They test the preconditions, not the provider: a test asserting that
 `azurerm_storage_account` sets a name is testing HashiCorp's code.
 
-**290 module tests** check each module against its own contract. **61
+**296 module tests** check each module against its own contract. **63
 environment tests** check the composition — that a name derived in one place
 reaches every consumer, that a subnet which must not carry a default route does
 not, that the profile's decision reaches the resource it governs. **10 bootstrap

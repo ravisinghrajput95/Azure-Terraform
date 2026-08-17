@@ -54,6 +54,51 @@ locals {
 }
 
 ################################################################################
+# Next-hop containment
+#
+# A VirtualAppliance next hop has to be an address inside this VNet, because the
+# appliance it names is in this VNet. Azure does not enforce that — a next hop
+# in a peered network is legitimate — so a transposed or stale address produces
+# a route table that reads correctly and black-holes everything matching it.
+#
+# Terraform has no "is this address inside this prefix" function, so the test is
+# to mask the address with the prefix's own length and compare network
+# addresses: 10.40.0.4 under /16 is 10.40.0.0, which is the network of
+# 10.40.0.0/16, so it is inside. can() guards the arithmetic rather than letting
+# an IPv6 entry or a malformed prefix throw.
+#
+# Unknown addresses are skipped deliberately. stage and prod may take the next
+# hop from the firewall module's computed private IP, which is unknown at plan;
+# Terraform then defers the whole precondition to apply, where the value is
+# known and the check still runs. What it must not do is report a pass over a
+# value it never saw.
+################################################################################
+
+locals {
+  next_hop_containment_checked = length(var.vnet_address_space) > 0
+
+  virtual_appliance_next_hops = {
+    for key, route in local.routes : key => route.next_hop_in_ip_address
+    if route.next_hop_type == "VirtualAppliance" && route.next_hop_in_ip_address != null
+  }
+
+  # The empty-list guard is not cosmetic: anytrue([]) is false, so without it a
+  # disabled check would report every next hop as a violation.
+  next_hop_outside_vnet = !local.next_hop_containment_checked ? [] : sort([
+    for key, ip in local.virtual_appliance_next_hops :
+    "${key} points at ${ip}, which is not inside ${join(", ", var.vnet_address_space)}"
+    # try() rather than `can(...) && ...`: Terraform 1.9.8, which CI pins, does
+    # NOT short-circuit &&, so the guarded expression would be evaluated anyway
+    # and throw on the input the guard exists to reject. A failed mask yields
+    # null, which matches no network.
+    if !anytrue([
+      for cidr in var.vnet_address_space :
+      try(cidrhost("${ip}/${split("/", cidr)[1]}", 0), null) == cidrhost(cidr, 0)
+    ])
+  ])
+}
+
+################################################################################
 # Duplicate association detection
 #
 # Azure permits at most one route table per subnet. Because local.associations

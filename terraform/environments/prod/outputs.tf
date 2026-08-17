@@ -146,6 +146,20 @@ output "route_tables_with_default_route" {
   value       = module.route_table.tables_with_default_route
 }
 
+# FALSE would mean the module's next-hop containment check did not run, not
+# that it passed. Azure accepts a UDR next hop outside the VNet — that is how a
+# peered appliance is named — so nothing else in the stack would report a
+# transposed or stale address, and a skipped check reads exactly like a clean one.
+output "next_hop_containment_checked" {
+  description = "Whether every VirtualAppliance next hop was verified to be an address inside this VNet. False means the check was skipped, not that it passed."
+  value       = module.route_table.next_hop_containment_checked
+}
+
+output "virtual_appliance_next_hops" {
+  description = "Map of \"<table>/<route>\" to the VirtualAppliance address it points at — the addresses that must exist and must answer for egress to work."
+  value       = module.route_table.virtual_appliance_next_hops
+}
+
 output "route_table_subnets" {
   description = "Map of route table name to the subnet names it is applied to."
   value       = module.route_table.associated_subnet_names

@@ -118,3 +118,37 @@ variable "subnets_forbidding_default_route" {
   type        = list(string)
   default     = ["AzureBastionSubnet", "AzureFirewallSubnet", "AzureFirewallManagementSubnet", "GatewaySubnet", "RouteServerSubnet"]
 }
+
+################################################################################
+# The VNet these tables serve
+#
+# Supplied so a VirtualAppliance next hop can be checked to be an address that
+# exists in this network. Azure ACCEPTS a next hop outside the VNet — that is
+# how a peered or ExpressRoute-reachable appliance is named — so there is no
+# API error to rely on. The route applies in seconds, every packet matching it
+# is handed to an address nothing answers for, and the symptom is total egress
+# loss with a routing table that reads exactly as designed.
+#
+# This is not hypothetical here. stage's test file pinned prod's firewall
+# address and prod's pinned stage's, exactly transposed, and nothing in the
+# repository objected: the plan was clean, the "a default route exists"
+# assertion passed, and only reading the two files side by side found it.
+#
+# Optional, because a hub-and-spoke deployment legitimately points at an
+# appliance in another VNet. Left empty the check cannot run — which is
+# reported by next_hop_containment_checked rather than left to look like a
+# check that passed.
+################################################################################
+
+variable "vnet_address_space" {
+  description = "Address space of the VNet these route tables serve, as CIDR strings. When set, every VirtualAppliance next hop must fall inside it. Leave empty ONLY when the next hop is deliberately in a peered network — an empty list disables the check, and next_hop_containment_checked then reports false."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for cidr in var.vnet_address_space : can(cidrhost(cidr, 0))
+    ])
+    error_message = "Every entry in vnet_address_space must be a valid CIDR block."
+  }
+}

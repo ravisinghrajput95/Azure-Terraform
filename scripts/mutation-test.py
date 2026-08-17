@@ -768,6 +768,41 @@ MUTATIONS = [
         ],
     ),
     M(
+        "stage-next-hop-check-disarmed",
+        "stage",
+        "the_next_hop_is_verified_against_this_vnets_address_space",
+        "Dropping the address space silently disarms the route-table module's "
+        "containment check. The plan stays valid and the module reports the "
+        "check as not performed, which is exactly the state that made the "
+        "transposed next hop survive for months.",
+        [
+            (
+                "main.tf",
+                "  vnet_address_space = local.vnet_address_space\n\n  subnets_forbidding_default_route = [",
+                "  subnets_forbidding_default_route = [",
+            )
+        ],
+    ),
+    M(
+        "stage-next-hop-takes-prods-address",
+        "stage",
+        "plans_with_the_documented_inputs",
+        "The original defect: stage's next hop in prod's range. Now refused by "
+        "the route-table module rather than planning clean, which is why this "
+        "is expected to be caught by the module rather than by an assertion.",
+        [
+            (
+                "main.tf",
+                '  vnet_address_space = local.vnet_address_space',
+                '  vnet_address_space = ["10.30.0.0/16"]',
+            )
+        ],
+        module_guard=(
+            "the route-table module's next-hop containment precondition refuses "
+            "the plan, which is the point of adding it"
+        ),
+    ),
+    M(
         "stage-aks-subnet-name-loses-region",
         "stage",
         "the_derived_names_reach_every_consumer",
@@ -1057,6 +1092,20 @@ MUTATIONS = [
                 "main.tf",
                 '  aks_subnet_name  = "snet-aks-${local.environment}-${local.loc}"',
                 '  aks_subnet_name  = "snet-aks-${local.environment}"',
+            )
+        ],
+    ),
+    M(
+        "prod-next-hop-check-disarmed",
+        "prod",
+        "the_next_hop_is_verified_against_this_vnets_address_space",
+        "Dropping the address space silently disarms the containment check "
+        "while the plan stays valid.",
+        [
+            (
+                "main.tf",
+                "  vnet_address_space = local.vnet_address_space\n\n  subnets_forbidding_default_route = [",
+                "  subnets_forbidding_default_route = [",
             )
         ],
     ),

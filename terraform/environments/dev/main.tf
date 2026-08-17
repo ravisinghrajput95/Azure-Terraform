@@ -304,6 +304,12 @@ module "route_table" {
   # The Application Gateway subnet name is added to the reserved list because
   # AppGW v2 requires direct control-plane access; a default route there makes
   # the gateway report permanently unhealthy.
+  # Armed rather than merely available: the module can only check that a
+  # VirtualAppliance next hop exists in this network if it is told what this
+  # network is, and a skipped check reads exactly like a passed one. Azure
+  # accepts an out-of-VNet next hop, so nothing else would report it.
+  vnet_address_space = local.vnet_address_space
+
   subnets_forbidding_default_route = [
     "AzureBastionSubnet",
     "AzureFirewallSubnet",

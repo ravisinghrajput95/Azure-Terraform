@@ -53,6 +53,27 @@ resource "azurerm_route" "this" {
   address_prefix         = each.value.address_prefix
   next_hop_type          = each.value.next_hop_type
   next_hop_in_ip_address = each.value.next_hop_in_ip_address
+
+  lifecycle {
+    precondition {
+      condition = length(local.next_hop_outside_vnet) == 0
+      error_message = join("\n", concat(
+        [
+          "A VirtualAppliance next hop is not an address in this VNet.",
+          "Azure ACCEPTS this — a next hop in a peered network is legitimate — so there is no API error to catch it:",
+          "",
+        ],
+        local.next_hop_outside_vnet,
+        [
+          "",
+          "The route applies in seconds, every packet matching it goes to an address nothing in this network answers for,",
+          "and the symptom is total egress loss with a routing table that reads exactly as designed.",
+          "",
+          "If the appliance really is in a peered VNet, leave vnet_address_space empty and record why.",
+        ]
+      ))
+    }
+  }
 }
 
 ################################################################################

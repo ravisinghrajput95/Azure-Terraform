@@ -285,6 +285,32 @@ run "the_next_hop_falls_back_to_the_firewall_module" {
   }
 }
 
+# The next hop has to be an address that exists in THIS network. Azure accepts
+# one that does not — a peered appliance is named exactly that way — so the
+# route table reads correctly and every workload packet goes to an address
+# nothing answers for. stage pinned prod's address and prod pinned stage's,
+# exactly transposed, until 2026-08-17.
+#
+# The containment check itself lives in the route-table module, which owns the
+# precondition. What this environment is responsible for is ARMING it, by
+# passing its own address space — and a skipped check is indistinguishable from
+# a passed one unless something asserts the difference.
+run "the_next_hop_is_verified_against_this_vnets_address_space" {
+  command = plan
+
+  assert {
+    condition     = output.next_hop_containment_checked
+    error_message = "stage must pass its own address space to the route-table module. False here means the containment check was SKIPPED, so a next hop from another environment's range would plan clean and black-hole all egress."
+  }
+
+  # Keyed by the derived route table name, which a test file cannot reference,
+  # so this asserts on the values.
+  assert {
+    condition     = values(output.virtual_appliance_next_hops) == ["10.40.0.4"]
+    error_message = "stage's firewall next hop must be inside stage's own 10.40.0.0/16. 10.30.0.4 is prod's range and is the value this file carried until 2026-08-17."
+  }
+}
+
 ################################################################################
 # Ingress
 ################################################################################

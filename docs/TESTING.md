@@ -9,8 +9,8 @@ it runs with no credentials, no backend and nothing created.
 
 | Where | Covers |
 |---|---|
-| `terraform/modules/*/tests/` | 290 runs — each module against its own contract |
-| `terraform/environments/*/tests/` | 61 runs — the composition, and the NSG rule matrices |
+| `terraform/modules/*/tests/` | 296 runs — each module against its own contract |
+| `terraform/environments/*/tests/` | 63 runs — the composition, and the NSG rule matrices |
 | `bootstrap/tests/` | 10 runs — Phase 0, the state backend |
 | [`scripts/README.md`](../scripts/README.md) | `mutation-test.py`, which measures whether the above actually guard anything |
 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) | The conventions for writing a new test or mutation |

@@ -58,3 +58,17 @@ output "route_count" {
   description = "Total number of routes managed by this module."
   value       = length(local.routes)
 }
+
+# False means the next-hop containment check did not run, not that it passed.
+# The distinction is the whole value of the output: a check skipped because
+# vnet_address_space was left empty is indistinguishable from a check that
+# succeeded unless something says so out loud.
+output "next_hop_containment_checked" {
+  description = "Whether every VirtualAppliance next hop was verified to be an address inside this VNet. FALSE means the check was SKIPPED because vnet_address_space is empty — which is correct only when the appliance is deliberately in a peered network. Azure accepts an out-of-VNet next hop either way, so nothing else will report it."
+  value       = local.next_hop_containment_checked
+}
+
+output "virtual_appliance_next_hops" {
+  description = "Map of \"<table>/<route>\" to the VirtualAppliance address it points at. Worth reading on any environment whose egress is inspected: this is the list of addresses that must exist and must answer, and a wrong entry here is invisible in every other output."
+  value       = local.virtual_appliance_next_hops
+}

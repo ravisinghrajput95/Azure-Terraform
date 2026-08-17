@@ -430,6 +430,12 @@ module "route_table" {
   location            = module.resource_group.location
   tags                = module.tags.tags
 
+  # Armed rather than merely available: the module can only check that a
+  # VirtualAppliance next hop exists in this network if it is told what this
+  # network is, and a skipped check reads exactly like a passed one. Azure
+  # accepts an out-of-VNet next hop, so nothing else would report it.
+  vnet_address_space = local.vnet_address_space
+
   subnets_forbidding_default_route = [
     "AzureBastionSubnet",
     "AzureFirewallSubnet",
