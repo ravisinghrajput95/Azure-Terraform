@@ -109,11 +109,12 @@ jobs:
   # access whatsoever — no credentials, no backend, no resource created. This
   # job therefore needs no Azure secrets and runs on forks.
   #
-  # Environments are included as well as modules. The module tests check each
-  # module against its own contract; the environment tests check the wiring
-  # between them, which is the layer no module test can see. For qa, stage and
-  # prod that is the only verification available at all — none of the three can
-  # be applied on this subscription.
+  # Environments and bootstrap are included as well as modules. The module
+  # tests check each module against its own contract; the environment tests
+  # check the wiring between them, which is the layer no module test can see.
+  # For qa, stage and prod that is the only verification available at all —
+  # none of the three can be applied on this subscription. bootstrap is the
+  # inverse case: the one configuration that is deployed, on local state.
   ##############################################################################
   test:
     name: Module and environment tests
@@ -131,7 +132,7 @@ jobs:
         run: |
           set -euo pipefail
           failed=0
-          for dir in terraform/modules/*/ terraform/environments/*/; do
+          for dir in terraform/modules/*/ terraform/environments/*/ bootstrap/; do
             [ -d "${dir}tests" ] || continue
             echo "::group::test ${dir}"
             if ! (cd "$dir" && terraform init -backend=false -input=false >/dev/null && terraform test); then

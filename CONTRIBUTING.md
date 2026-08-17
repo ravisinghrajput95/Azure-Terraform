@@ -151,8 +151,9 @@ run "rejects_the_thing_that_fails_silently" {
 }
 ```
 
-CI discovers `terraform/modules/*/tests/` and `terraform/environments/*/tests/`
-automatically. Adding a directory is all that is needed; no workflow change.
+CI discovers `terraform/modules/*/tests/`, `terraform/environments/*/tests/`
+and `bootstrap/tests/` automatically. Adding a directory is all that is needed;
+no workflow change.
 
 ### Environment tests are a different job from module tests
 

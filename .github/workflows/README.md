@@ -96,10 +96,10 @@ are identifiers, not secrets — a client ID is public information under OIDC.
 and gives the fastest signal. Validates every module and environment
 independently.
 
-**`test`** — `terraform test` against every module and every environment that
-has a `tests/` directory. Each test file declares `mock_provider`, so the whole
-job runs with no credentials, no backend and no resource created; it needs no
-Azure secrets and works on forks.
+**`test`** — `terraform test` against every module, every environment and the
+bootstrap: anything with a `tests/` directory. Each test file declares
+`mock_provider`, so the whole job runs with no credentials, no backend and no
+resource created; it needs no Azure secrets and works on forks.
 
 The environment suites are the ones worth knowing about. Module tests check a
 module against its own contract; the environment suites check the wiring
@@ -107,6 +107,11 @@ between modules — that the value one emits is the value the next needs, and
 that the profile's decisions reach the resources they govern. For qa, stage and
 prod that is the only verification there is, since none of the three can be
 applied on the current subscription.
+
+The bootstrap suite is the inverse case: Phase 0 is the one configuration that
+is deployed, and the only one on local state. Its resources are declared in the
+root module rather than composed from modules, so unlike an environment suite
+it can name them in `expect_failures` and test its preconditions in place.
 
 **`tflint`** — catches what `validate` cannot. `validate` checks syntax and
 types against the provider schema; it does not know that a VM size might not

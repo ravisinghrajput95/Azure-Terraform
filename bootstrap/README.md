@@ -23,6 +23,19 @@ import` reconstructs it, and the commands are below.
 `*.tfstate` is gitignored at the repository root, so the local state is never
 committed.
 
+`tests/bootstrap.tftest.hcl` covers this configuration under `mock_provider` —
+no credentials, no Azure calls, and no contact with the real state file in this
+directory, since `terraform test` keeps its own ephemeral state. It asserts the
+things a local-state configuration has no second chance at: one container per
+environment named the way each `backend.conf` expects, backend configs that
+carry their own environment's key and `use_azuread_auth`, and the soft-delete
+window refusing a value between 1 and 6 days — long enough to look like
+protection, too short to outlive the weekend the deletion happened on.
+
+It is also the only configuration here whose preconditions can be named in
+`expect_failures`, because it declares its resources rather than composing
+modules.
+
 ---
 
 ## Adopted — imported and applied on 2026-08-14

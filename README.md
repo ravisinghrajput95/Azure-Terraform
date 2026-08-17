@@ -108,12 +108,15 @@ make check              # fmt-check, validate, test, lint
 make plan ENV=dev       # needs credentials
 ```
 
-**346 tests** run with `mock_provider` — no credentials, no backend, nothing
+**356 tests** run with `mock_provider` — no credentials, no backend, nothing
 created. They test the preconditions, not the provider: a test asserting that
 `azurerm_storage_account` sets a name is testing HashiCorp's code.
 
-They split into two jobs. **289 module tests** check each module against its
-own contract. **57 environment tests** check the composition — that a name
+**289 module tests** check each module against its own contract. **10 bootstrap
+tests** cover Phase 0, the state backend — the one configuration that is
+actually deployed and the only one on local state, where a mistake is not
+recoverable by reading state back, because the account is what holds the state.
+**57 environment tests** check the composition — that a name
 derived in one place reaches every consumer, that a subnet which must not carry
 a default route does not, that the profile's decision reaches the resource it
 governs. That layer is invisible to a module test, and for `qa`, `stage` and
@@ -133,7 +136,8 @@ silently refusing every call from a pod to the cache.
 What they do not prove is that Azure accepts the plan. A mocked plan shows the
 configuration is internally coherent, not that the API agrees.
 
-**All 22 built modules and all 4 environments are covered, and the module
+**Every configuration in the repository now has tests — 22 modules, 4
+environments and the bootstrap — and the module
 coverage was measured rather than asserted.** Every precondition in the
 repository was weakened to an always-true expression in turn, with the suite
 re-run each time, to check that some test actually fails when it stops
