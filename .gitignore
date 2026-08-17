@@ -222,7 +222,15 @@ checkov-report.*
 # TFLint
 ###############################################################################
 
-.tflint.hcl
+# .tflint.hcl is deliberately NOT ignored. It is the lint policy — which rules
+# run, which are off and why, and the pinned azurerm ruleset — so ignoring it
+# means the policy exists only on the machine that wrote it. It did, for the
+# life of this repository: CI checked out a tree with no config, TFLint fell
+# back to its defaults, and the azurerm ruleset that the job exists to run
+# never loaded. The job passed in 0.08s per directory and reported success.
+#
+# There is nothing secret in it. Only the downloaded plugin binaries below are
+# machine-local.
 .tflint.d/
 
 ###############################################################################
