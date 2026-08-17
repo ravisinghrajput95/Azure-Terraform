@@ -786,7 +786,7 @@ MUTATIONS = [
     M(
         "stage-next-hop-takes-prods-address",
         "stage",
-        "plans_with_the_documented_inputs",
+        "the_next_hop_is_verified_against_this_vnets_address_space",
         "The original defect: stage's next hop in prod's range. Now refused by "
         "the route-table module rather than planning clean, which is why this "
         "is expected to be caught by the module rather than by an assertion.",
