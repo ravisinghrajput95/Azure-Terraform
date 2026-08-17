@@ -13,7 +13,7 @@ output "resource_group_ids" {
 }
 
 output "locked_scopes" {
-  description = "Scopes carrying a management lock. Empty in dev by design — a lock would block terraform destroy."
+  description = "Scopes carrying a management lock. A lock blocks terraform destroy, so the profile turns them off where an environment is meant to be torn down and on where it is not."
   value       = module.resource_group.locked_scopes
 }
 
@@ -31,7 +31,7 @@ output "location" {
 }
 
 output "name_prefix" {
-  description = "Shared name base, e.g. \"cloudcart-dev-eus\"."
+  description = "Shared name base, e.g. \"cloudcart-prod-cus\"."
   value       = module.naming.base
 }
 
@@ -80,7 +80,7 @@ output "log_analytics_workspace_name" {
 }
 
 output "log_ingestion_is_capped" {
-  description = "Whether a daily ingestion cap is active. FALSE in qa: a cap stops ingestion once hit and drops everything after, which in a test environment means losing the evidence for whatever was being tested. Ingestion is billed here rather than capped."
+  description = "Whether a daily ingestion cap is active. FALSE in prod: a cap stops ingestion once hit and drops everything after, which in a test environment means losing the evidence for whatever was being tested. Ingestion is billed here rather than capped."
   value       = module.log_analytics.ingestion_is_capped
 }
 
@@ -142,7 +142,7 @@ output "route_table_ids" {
 }
 
 output "route_tables_with_default_route" {
-  description = "Route tables forcing egress through a virtual appliance. Empty in dev: a NAT Gateway attaches to the subnet directly and is not a UDR next hop."
+  description = "Route tables forcing egress through a virtual appliance. Empty where egress is by NAT Gateway — one attaches to the subnet directly and is not a UDR next hop — and populated where an Azure Firewall is the next hop."
   value       = module.route_table.tables_with_default_route
 }
 
@@ -314,7 +314,7 @@ output "aks_fqdn" {
 }
 
 output "aks_availability_summary" {
-  description = "Plain-language availability posture. dev is deliberately NOT highly available — three nodes across three zones is 6 vCPU against a 4 vCPU trial quota."
+  description = "Plain-language availability posture of the deployed cluster."
   value       = module.aks.availability_summary
 }
 
@@ -339,7 +339,7 @@ output "aks_kubelet_identity_object_id" {
 }
 
 output "aks_get_credentials_command" {
-  description = "Command to configure kubectl against this cluster. NOTE: qa's cluster is PRIVATE, so this only works from inside the VNet — via Bastion, or from a runner on a workload subnet. From outside, the command succeeds and every subsequent call times out resolving the API server, which reads like a network fault rather than a topology decision."
+  description = "Command to configure kubectl against this cluster. NOTE: this cluster is PRIVATE, so this only works from inside the VNet — via Bastion, or from a runner on a workload subnet. From outside, the command succeeds and every subsequent call times out resolving the API server, which reads like a network fault rather than a topology decision."
   value       = "az aks get-credentials --resource-group ${module.resource_group.names["app"]} --name ${module.aks.name}"
 }
 
@@ -366,6 +366,7 @@ output "firewall_security_summary" {
 }
 
 output "egress_is_inspected" {
+  # conformance:cross-env-ok
   description = "Whether workload egress passes through a firewall rather than a NAT Gateway. False means any pod can reach any internet address, which is dev's and qa's posture."
   value       = module.profile.egress_strategy == "firewall"
 }
@@ -375,7 +376,7 @@ output "egress_is_inspected" {
 ################################################################################
 
 output "application_gateway_public_ip" {
-  description = "Public IP of the Application Gateway, the only ingress path into qa."
+  description = "Public IP of the Application Gateway, the only ingress path into this environment."
   value       = module.profile.enable_application_gateway ? module.application_gateway[0].public_ip_address : null
 }
 

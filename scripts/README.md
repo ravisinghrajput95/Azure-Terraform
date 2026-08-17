@@ -1,6 +1,6 @@
 # scripts
 
-Four checks. Each one exists because its absence caused a real failure in this
+Five checks. Each one exists because its absence caused a real failure in this
 repository, and each one answers a question `terraform plan` cannot.
 
 They are read-only apart from `preflight.sh --probe-sql`, which creates and
@@ -12,6 +12,10 @@ immediately deletes a throwaway SQL server. None of them applies anything.
 | [`check-ingestion.sh`](check-ingestion.sh) | How close is a workspace to its daily cap, and has it been hit? |
 | [`verify-aks-access.sh`](verify-aks-access.sh) | Can anyone actually reach the cluster? |
 | [`drift.sh`](drift.sh) | Does Azure still match the code, per environment? |
+| [`check-environment-conformance.py`](check-environment-conformance.py) | Do the four environments still agree where they must? |
+
+The first four need Azure credentials. The last does not — it reads `.tf` files
+and runs in CI on every push.
 
 ---
 
@@ -105,6 +109,44 @@ hide a deliberate, informative refusal behind a generic error.
 
 Skips any environment with no `backend.conf` or `terraform.tfvars`, since both
 are gitignored and machine-specific.
+
+---
+
+## `check-environment-conformance.py`
+
+```bash
+make conformance                              # or:
+python3 scripts/check-environment-conformance.py
+```
+
+The environments are near-copies of each other by design — the same modules
+composed with different values. That is what makes adding one cheap, and it is
+also why they drift. Every copy-paste defect found in this repository was found
+by a person reading two files side by side, which does not scale and does not
+run in CI.
+
+Three of those defects had reached a `description`, which is a real attribute
+on `azurerm_network_security_rule`, not a comment: prod's NSG would have
+documented itself in the Azure portal as qa's ingress path.
+
+It checks three mechanical properties, and deliberately not a fourth:
+
+| Check | Catches |
+|---|---|
+| No `description` names a different environment without naming its own | "Empty in dev by design" sitting in `prod/outputs.tf` |
+| Variables that must share a default do | `dev` said `location = "eastus"` while its three siblings said `centralus` — and dev is the only environment ever deployed |
+| The environments declare the same variable set | A variable added to one and forgotten in the others |
+
+It does **not** judge whether prose is true; nothing mechanical can. A
+deliberate contrast — "which is dev's and qa's posture" — is allowed by putting
+`# conformance:cross-env-ok` on the line above, so an exception is a decision
+someone wrote down next to the text rather than a rule quietly relaxed
+somewhere else.
+
+Both quoted and heredoc descriptions are read. That is not incidental: the
+`subscription_vcpu_quota` descriptions that claimed qa's vCPU figure inside
+`stage` and `prod` were heredocs, so a check reading only quoted strings would
+have missed the defect that motivated writing this.
 
 ---
 

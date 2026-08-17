@@ -102,6 +102,14 @@ jobs:
           done
           exit $failed
 
+      # The four environments are near-copies, which is what makes them cheap
+      # to add and what makes them drift. Every copy-paste defect found so far
+      # was found by someone reading two files side by side — and three had
+      # reached a `description`, which is a real attribute on the Azure
+      # resource, not a comment. Reads .tf files only; no Azure, no Terraform.
+      - name: environment conformance
+        run: python3 scripts/check-environment-conformance.py
+
   ##############################################################################
   # Unit and composition tests
   #

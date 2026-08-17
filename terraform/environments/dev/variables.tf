@@ -23,9 +23,9 @@ variable "workload" {
 }
 
 variable "location" {
-  description = "Azure region."
+  description = "Azure region. Central US, because Azure SQL provisioning is restricted in East US on this subscription — see docs/ARCHITECTURE.md §6a."
   type        = string
-  default     = "eastus"
+  default     = "centralus"
 }
 
 ################################################################################

@@ -143,7 +143,7 @@ locals {
           destination_port_range     = "443"
           source_address_prefix      = local.app_ingress_source
           destination_address_prefix = "*"
-          description                = "HTTPS from the Application Gateway subnet, which is the only ingress path in qa."
+          description                = "HTTPS from the Application Gateway subnet, which is the only ingress path in this environment."
         }
         "Allow-LB-Probe"   = local.allow_lb_probe
         "Allow-SSH-Admin"  = local.allow_ssh_from_bastion

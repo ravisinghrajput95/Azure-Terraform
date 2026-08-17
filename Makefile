@@ -222,8 +222,19 @@ docs: ## Regenerate the module README tables, the way CI generates them
 	done; \
 	echo "regenerated $$(ls -d terraform/modules/*/ | wc -l | tr -d ' ') module READMEs"
 
+# The environments are near-copies by design, which is what makes them cheap to
+# add and what makes them drift. Every copy-paste defect found so far was found
+# by a person reading two files side by side; three of them had reached a
+# `description`, which is a real attribute on the Azure resource rather than a
+# comment. This runs that comparison mechanically.
+#
+# Reads .tf files only — no Terraform, no Azure, no credentials.
+.PHONY: conformance
+conformance: ## Check the four environments agree where they must
+	@python3 scripts/check-environment-conformance.py
+
 .PHONY: check
-check: tf-version fmt-check validate test lint ## Everything CI checks, in CI's order
+check: tf-version fmt-check validate test lint conformance ## Everything CI checks, in CI's order
 
 # ---------------------------------------------------------------------------
 # Environment operations

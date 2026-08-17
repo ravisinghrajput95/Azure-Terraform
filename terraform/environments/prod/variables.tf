@@ -92,7 +92,7 @@ variable "subscription_vcpu_quota" {
 ################################################################################
 
 variable "profile_overrides" {
-  description = "Overrides applied on top of the qa profile. See modules/profile/README.md for the full attribute list."
+  description = "Overrides applied on top of the prod profile. See modules/profile/README.md for the full attribute list."
   type        = any
   default     = {}
 }
@@ -102,7 +102,8 @@ variable "profile_overrides" {
 ################################################################################
 
 variable "firewall_private_ip" {
-  description = "Private IP of the Azure Firewall, used as the VirtualAppliance next hop for the workload route table. Only consumed when the profile's egress_strategy is \"firewall\"; qa uses a NAT Gateway and leaves this null. Taken as a variable rather than read from the firewall module so that route tables can be applied before, or independently of, the firewall."
+  # conformance:cross-env-ok
+  description = "Private IP of the Azure Firewall, used as the VirtualAppliance next hop for the workload route table. Only consumed when the profile's egress_strategy is \"firewall\", which is this environment's strategy. dev and qa use a NAT Gateway and leave it null. Taken as a variable rather than read from the firewall module so that route tables can be applied before, or independently of, the firewall."
   type        = string
   default     = null
 }
@@ -110,7 +111,7 @@ variable "firewall_private_ip" {
 ################################################################################
 # Data-plane access
 #
-# qa sets data_plane_public_access_enabled = false in its profile, so unlike
+# prod sets data_plane_public_access_enabled = false in its profile, so unlike
 # dev these addresses do NOT open the Key Vault, Storage or SQL data planes —
 # those are private-endpoint only here. The list is still consumed for SQL
 # firewall rules, which are inert while public access is disabled, and is kept
@@ -119,7 +120,7 @@ variable "firewall_private_ip" {
 ################################################################################
 
 variable "deployer_ip_addresses" {
-  description = "Public IPv4 addresses permitted to reach data planes where public access is enabled. Largely inert in qa, which is private-endpoint only. Azure rejects /31 and /32 suffixes here; supply bare addresses."
+  description = "Public IPv4 addresses permitted to reach data planes where public access is enabled. Largely inert here, as this environment is private-endpoint only. Azure rejects /31 and /32 suffixes here; supply bare addresses."
   type        = list(string)
   default     = []
 }
@@ -170,12 +171,12 @@ variable "aks_excluded_log_categories" {
   description = <<-EOT
     AKS diagnostic log categories NOT collected in this environment.
 
-    EMPTY in qa, deliberately. dev excludes `kube-audit` and `kube-audit-admin`
-    because they are ~995 MB/day against a 512 MB/day cap and were causing
-    daily data loss. qa's profile sets log_daily_quota_gb = -1, so there is no
-    cap to exhaust and no reason to drop the API server audit trail — which is
-    the log you want when reproducing a security question in a test
-    environment.
+    EMPTY in prod, deliberately. dev excludes `kube-audit` and
+    `kube-audit-admin` because they are ~995 MB/day against a 512 MB/day cap
+    and were causing daily data loss. prod's profile sets log_daily_quota_gb
+    = -1, so there is no cap to exhaust and no reason to drop the API server
+    audit trail — which is the log you want when reproducing a security
+    question in a test environment.
 
     Ingestion is then billed rather than capped. In an environment whose whole
     purpose is validating a security topology, dropping the log that records
