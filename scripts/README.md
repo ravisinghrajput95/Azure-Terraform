@@ -150,6 +150,33 @@ have missed the defect that motivated writing this.
 
 ---
 
+## `tests/test-scripts.sh`
+
+```bash
+make test-sh                     # or:
+./scripts/tests/test-scripts.sh
+```
+
+ShellCheck reads these scripts; this runs them. The failure worth guarding
+against is not a crash — a crash is visible — but a script that exits 0 without
+having checked anything, because that reports success it did not earn.
+
+| Asserted, for every script | Why |
+|---|---|
+| It parses (`bash -n`) | |
+| `set -euo pipefail` | Without it a failed command is ignored and the next runs against empty output, reporting nothing wrong |
+| A shebang, and the executable bit | Decides whether the pre-commit hook lints the file or skips it silently while CI lints it — see CONTRIBUTING.md |
+
+Plus the one behaviour reachable with no subscription: `preflight.sh` exits 2
+with a usage message when given no region. Everything past that point calls
+Azure, which is the boundary between what can be tested here and what the
+scripts exist to do.
+
+It refuses to pass over an empty file set, for the same reason the ShellCheck
+job does.
+
+---
+
 ## Linting
 
 These scripts are the checks that answer what `terraform plan` cannot, so a

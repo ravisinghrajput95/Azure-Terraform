@@ -233,8 +233,16 @@ docs: ## Regenerate the module README tables, the way CI generates them
 conformance: ## Check the four environments agree where they must
 	@python3 scripts/check-environment-conformance.py
 
+# The scripts answer what terraform plan cannot, so a defect in one is a defect
+# in the verification. These assert the invariants that stop a silent no-op
+# passing for a pass — `set -euo pipefail`, a shebang, the executable bit that
+# decides whether pre-commit lints the file or skips it. No Azure.
+.PHONY: test-sh
+test-sh: ## Invariant tests for the scripts in scripts/
+	@./scripts/tests/test-scripts.sh
+
 .PHONY: check
-check: tf-version fmt-check validate test lint conformance ## Everything CI checks, in CI's order
+check: tf-version fmt-check validate test test-sh lint conformance ## Everything CI checks, in CI's order
 
 # ---------------------------------------------------------------------------
 # Environment operations

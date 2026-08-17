@@ -174,6 +174,27 @@ in CI. The first draft of `dev`'s suite asserted a `cus` name prefix while
 `var.location` defaults to `eastus`, and passed only because the local tfvars
 said `centralus`.
 
+**Plan-only leaves most outputs untestable.** Anything derived from a
+provider-computed value is unknown at plan, and an assertion on an unknown is
+not an assertion. Each environment therefore ends with one `command = apply`
+run against the mocks. It proves the output EXPRESSIONS resolve — the `try()`,
+the join over a computed attribute, the map comprehension over a module that
+may have `count = 0` — and it reaches preconditions that depend on a data
+source, which plan never evaluates.
+
+Do not assert that a mocked value EQUALS anything; that tests Terraform's
+generator. Assert that it resolves, and that collections derived from it agree
+with each other.
+
+Apply mode needs the mocks to be shaped like Azure, because the provider parses
+IDs client-side before any API call. A subnet handed `1p97mteh` fails with "the
+number of segments didn't match", which says nothing about your configuration.
+The `mock_resource` blocks at the top of each environment's test file supply
+syntactically valid IDs per resource type, and `override_resource` gives each
+subnet a DISTINCT one — `mock_resource` defaults are per type, and the `nsg`
+module groups associations by subnet ID to catch two NSGs claiming one subnet,
+so identical IDs make that condition genuinely true.
+
 **`expect_failures` cannot name anything inside a child module.** It only
 accepts checkable objects in the root module under test, and a composition root
 declares no resources of its own — so the failures that matter most there

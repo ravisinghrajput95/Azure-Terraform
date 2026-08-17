@@ -33,6 +33,128 @@ mock_provider "azurerm" {
       subscription_id = "00000000-0000-0000-0000-000000000000"
     }
   }
+
+  ##############################################################################
+  # Resource IDs, shaped like real ones.
+  #
+  # Needed only by the apply-mode run at the end of this file. Terraform's
+  # generator produces random 8-character strings for computed attributes, and
+  # the azurerm provider PARSES the IDs it is handed — client-side, before any
+  # API call — so a subnet association given "1p97mteh" fails with "the number
+  # of segments didn't match" rather than anything about this configuration.
+  #
+  # Every ID below is therefore syntactically valid and semantically fake. They
+  # are scaffolding for the mocks, not fixtures anything asserts on: a mock ID
+  # tells you nothing about the deployment, so nothing here is asserted against
+  # one. What the apply run checks is that the OUTPUTS resolve — see the note
+  # above that run.
+  ##############################################################################
+
+  # A resource group ID is a scope, not just an identifier: role assignments
+  # and alert rules are scoped to one, and the provider rejects a scope it
+  # cannot classify with "Root scope (/) is invalid" rather than naming the ID.
+  # The diagnostics module DISCOVERS what a resource can emit, by reading
+  # azurerm_monitor_diagnostic_categories, and refuses to create a setting that
+  # would enable nothing. At plan the data source is unknown, so that
+  # precondition is never evaluated; at apply the generator returns empty lists
+  # and every diagnostic setting in the environment trips it.
+  #
+  # That is the precondition doing its job on an empty answer rather than a bug
+  # — but it means apply mode needs the discovery to return something. These
+  # are the shapes the module branches on: an "allLogs" group, so
+  # use_category_group takes its true path, and a metric to include.
+  mock_data "azurerm_monitor_diagnostic_categories" {
+    defaults = {
+      log_category_types  = ["Administrative", "Audit", "kube-audit", "kube-audit-admin"]
+      log_category_groups = ["allLogs", "audit"]
+      metrics             = ["AllMetrics"]
+    }
+  }
+
+  mock_resource "azurerm_mssql_database" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Sql/servers/sql-mock/databases/db-mock" }
+  }
+
+  # Policy objects are attached by ID and parsed like any other.
+  mock_resource "azurerm_web_application_firewall_policy" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/applicationGatewayWebApplicationFirewallPolicies/waf-mock" }
+  }
+  mock_resource "azurerm_firewall_policy" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/firewallPolicies/afwp-mock" }
+  }
+
+  mock_resource "azurerm_application_gateway" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/applicationGateways/agw-mock" }
+  }
+  mock_resource "azurerm_firewall" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/azureFirewalls/afw-mock" }
+  }
+
+  mock_resource "azurerm_resource_group" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock" }
+  }
+  mock_resource "azurerm_kubernetes_cluster" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.ContainerService/managedClusters/aks-mock" }
+  }
+
+  mock_resource "azurerm_virtual_network" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/virtualNetworks/vnet-mock" }
+  }
+  mock_resource "azurerm_subnet" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/virtualNetworks/vnet-mock/subnets/snet-mock" }
+  }
+  mock_resource "azurerm_network_security_group" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/networkSecurityGroups/nsg-mock" }
+  }
+  mock_resource "azurerm_route_table" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/routeTables/rt-mock" }
+  }
+  mock_resource "azurerm_nat_gateway" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/natGateways/ng-mock" }
+  }
+  mock_resource "azurerm_private_dns_zone" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/privateDnsZones/privatelink.mock.core.windows.net" }
+  }
+
+  # A public IP is read as an address, not just an ID: AKS derives its
+  # authorized_ip_ranges from the egress address and appends /32, so a random
+  # string produces "must start with IPV4 address".
+  mock_resource "azurerm_public_ip" {
+    defaults = {
+      id         = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/publicIPAddresses/pip-mock"
+      ip_address = "198.51.100.1"
+    }
+  }
+
+  mock_resource "azurerm_log_analytics_workspace" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.OperationalInsights/workspaces/log-mock" }
+  }
+  mock_resource "azurerm_monitor_action_group" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Insights/actionGroups/ag-mock" }
+  }
+  mock_resource "azurerm_managed_redis" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Cache/redisEnterprise/redis-mock" }
+  }
+  mock_resource "azurerm_mssql_server" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Sql/servers/sql-mock" }
+  }
+  mock_resource "azurerm_storage_account" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Storage/storageAccounts/stmock" }
+  }
+  mock_resource "azurerm_key_vault" {
+    defaults = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.KeyVault/vaults/kv-mock" }
+  }
+
+  # Identities are consumed as principals, and a role assignment scope rejects
+  # anything that is not a UUID.
+  mock_resource "azurerm_user_assigned_identity" {
+    defaults = {
+      id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-mock"
+      principal_id = "44444444-4444-4444-4444-444444444444"
+      client_id    = "55555555-5555-5555-5555-555555555555"
+      tenant_id    = "11111111-1111-1111-1111-111111111111"
+    }
+  }
 }
 
 ################################################################################
@@ -433,5 +555,148 @@ run "the_application_tier_ingress_source_is_the_internet_in_dev" {
       ]
     ]))
     error_message = "dev's application tier ingress must be sourced from Internet, because a public load balancer preserves the original source address. If this reads as a subnet CIDR, the profile has switched ingress and the rule no longer matches anything."
+  }
+}
+
+
+################################################################################
+# Apply against the mocks
+#
+# Every run above is plan-only, which leaves roughly forty of this environment's
+# sixty-two outputs untouched: anything derived from a value the provider
+# computes is unknown at plan, and an assertion on an unknown is not an
+# assertion. Applying against the mocks makes those values known.
+#
+# What this can and cannot show is worth being precise about. The values are
+# mocks, so asserting one equals a particular string would only test
+# Terraform's generator. What it does prove is that the output EXPRESSIONS
+# resolve — the try(), the join over a computed attribute, the map
+# comprehension over a resource that may have count = 0. Those are this
+# repository's code, they are skipped entirely by a plan-only run, and a
+# reference that is wrong in one of them produces an error here rather than on
+# the day someone runs terraform output.
+#
+# Still no Azure: mock_provider intercepts every provider operation, so apply
+# creates nothing and needs no credentials.
+################################################################################
+
+run "the_outputs_resolve_when_the_values_are_known" {
+  command = apply
+
+  # count = 1 on the bastion module, and the try() around a module that may not
+  # exist. Null here means the module was not instantiated at all.
+  assert {
+    condition     = output.bastion_dns_name != null
+    error_message = "The Bastion output must resolve. dev enables Bastion, so a null here means the module is not being instantiated and the try() is masking it."
+  }
+
+  assert {
+    condition     = output.bastion_capability_notes != null
+    error_message = "The Bastion capability notes must resolve — they are what record that the Developer SKU is portal-only."
+  }
+
+  # A join over attributes that are unknown until apply.
+  assert {
+    condition     = output.aks_get_credentials_command != null && output.aks_get_credentials_command != ""
+    error_message = "The kubectl command must assemble. It concatenates the resource group and cluster name, both unknown at plan."
+  }
+
+  # Map comprehensions over resources, each of which resolves only once the
+  # underlying IDs exist.
+  assert {
+    condition     = length(output.managed_identity_principal_ids) == length(output.managed_identity_ids)
+    error_message = "Every managed identity must expose both an ID and a principal ID. A tier present in one map and missing from the other means a role assignment elsewhere silently binds nothing."
+  }
+
+  assert {
+    condition     = length(output.nsg_ids) == length(output.nsg_rules)
+    error_message = "Every NSG must appear in both the ID map and the rule matrix."
+  }
+
+  assert {
+    condition     = output.key_vault_uri != null
+    error_message = "The Key Vault URI must resolve."
+  }
+
+  assert {
+    condition     = output.storage_blob_endpoint != null
+    error_message = "The storage blob endpoint must resolve."
+  }
+
+  assert {
+    condition     = output.sql_server_fqdn != null
+    error_message = "The SQL server FQDN must resolve."
+  }
+
+  assert {
+    condition     = output.redis_hostname != null
+    error_message = "The Redis hostname must resolve. dev enables Redis, so null means the module is not instantiated."
+  }
+
+  assert {
+    condition     = output.aks_oidc_issuer_url != null
+    error_message = "The OIDC issuer URL must resolve — a federated identity credential references it, so a null here breaks workload identity."
+  }
+
+  assert {
+    condition     = output.log_analytics_workspace_id != null
+    error_message = "The workspace ID must resolve; every diagnostic setting targets it."
+  }
+}
+
+################################################################################
+# One distinct ID per subnet
+#
+# mock_resource defaults are per TYPE, so every subnet would otherwise be
+# handed the same ID — and the nsg module groups its associations BY subnet ID
+# to catch two NSGs claiming one subnet. Identical IDs make that condition
+# genuinely true, and the module reports it correctly. The precondition is
+# right; the mocks were wrong.
+#
+# Overriding per instance gives each subnet its own ID, which is what the real
+# provider would return. This is also the clearest demonstration of why the
+# check exists: it took exactly one shared identifier to trip it.
+################################################################################
+
+override_resource {
+  target = module.networking.azurerm_subnet.this["AzureBastionSubnet"]
+  values = {
+    id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/virtualNetworks/vnet-mock/subnets/AzureBastionSubnet"
+  }
+}
+override_resource {
+  target = module.networking.azurerm_subnet.this["snet-app-dev-cus"]
+  values = {
+    id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/virtualNetworks/vnet-mock/subnets/snet-app-dev-cus"
+  }
+}
+override_resource {
+  target = module.networking.azurerm_subnet.this["snet-biz-dev-cus"]
+  values = {
+    id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/virtualNetworks/vnet-mock/subnets/snet-biz-dev-cus"
+  }
+}
+override_resource {
+  target = module.networking.azurerm_subnet.this["snet-db-dev-cus"]
+  values = {
+    id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/virtualNetworks/vnet-mock/subnets/snet-db-dev-cus"
+  }
+}
+override_resource {
+  target = module.networking.azurerm_subnet.this["snet-pep-dev-cus"]
+  values = {
+    id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/virtualNetworks/vnet-mock/subnets/snet-pep-dev-cus"
+  }
+}
+override_resource {
+  target = module.networking.azurerm_subnet.this["snet-aks-dev-cus"]
+  values = {
+    id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/virtualNetworks/vnet-mock/subnets/snet-aks-dev-cus"
+  }
+}
+override_resource {
+  target = module.networking.azurerm_subnet.this["snet-mgmt-dev-cus"]
+  values = {
+    id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mock/providers/Microsoft.Network/virtualNetworks/vnet-mock/subnets/snet-mgmt-dev-cus"
   }
 }

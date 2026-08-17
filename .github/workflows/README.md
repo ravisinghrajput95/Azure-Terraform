@@ -113,6 +113,12 @@ is deployed, and the only one on local state. Its resources are declared in the
 root module rather than composed from modules, so unlike an environment suite
 it can name them in `expect_failures` and test its preconditions in place.
 
+**`shellcheck`** — lints every shell script, then runs
+`scripts/tests/test-scripts.sh`, which asserts the invariants that stop a
+silent no-op passing for a pass: `set -euo pipefail`, a shebang, and the
+executable bit that decides whether the pre-commit hook lints a file or skips
+it. Both refuse to report success over an empty file set.
+
 **`tflint`** — catches what `validate` cannot. `validate` checks syntax and
 types against the provider schema; it does not know that a VM size might not
 exist, that a variable is declared and never used, or that a name breaks an

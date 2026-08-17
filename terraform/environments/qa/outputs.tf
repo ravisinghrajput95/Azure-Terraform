@@ -353,7 +353,7 @@ output "application_gateway_public_ip" {
 }
 
 output "ingress_is_encrypted" {
-  description = "Whether the gateway serves HTTPS. False means no TLS certificate was supplied, so it was deployed HTTP-only — a deliberate degraded mode, reported rather than left to be discovered."
+  description = "TLS posture of the ingress path, in plain language — a sentence, not a boolean, despite the name. \"HTTP ONLY\" means no TLS certificate was supplied and the gateway was deployed with an HTTP listener alone: a deliberate degraded mode, reported rather than left to be discovered."
   value = !module.profile.enable_application_gateway ? "no Application Gateway deployed" : (
     local.agw_has_certificate
     ? "HTTPS with a Key Vault certificate; HTTP redirects to it"

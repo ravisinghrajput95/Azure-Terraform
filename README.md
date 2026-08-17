@@ -104,11 +104,11 @@ Makefile             every check CI runs, plus plan/apply per environment
 
 ```bash
 pre-commit install      # the CI checks, at commit time
-make check              # fmt-check, validate, test, lint
+make check              # fmt-check, validate, test, test-sh, lint, conformance
 make plan ENV=dev       # needs credentials
 ```
 
-**356 tests** run with `mock_provider` — no credentials, no backend, nothing
+**360 tests** run with `mock_provider` — no credentials, no backend, nothing
 created. They test the preconditions, not the provider: a test asserting that
 `azurerm_storage_account` sets a name is testing HashiCorp's code.
 
@@ -116,10 +116,10 @@ created. They test the preconditions, not the provider: a test asserting that
 tests** cover Phase 0, the state backend — the one configuration that is
 actually deployed and the only one on local state, where a mistake is not
 recoverable by reading state back, because the account is what holds the state.
-**57 environment tests** check the composition — that a name
-derived in one place reaches every consumer, that a subnet which must not carry
-a default route does not, that the profile's decision reaches the resource it
-governs. That layer is invisible to a module test, and for `qa`, `stage` and
+**61 environment tests** check the composition — that a
+name derived in one place reaches every consumer, that a subnet which must not
+carry a default route does not, that the profile's decision reaches the
+resource it governs. That layer is invisible to a module test, and for `qa`, `stage` and
 `prod` it is the only verification available at all: none of the three can be
 applied on this subscription, so a mocked plan is the whole of it. `stage`'s
 suite is the only thing that executes the Azure Firewall egress path anywhere.
@@ -135,6 +135,15 @@ silently refusing every call from a pod to the cache.
 
 What they do not prove is that Azure accepts the plan. A mocked plan shows the
 configuration is internally coherent, not that the API agrees.
+
+Most runs are plan-only, and each environment adds one that **applies against
+the mocks**. That is not for realism — the values are generated — but for
+reach: anything derived from a provider-computed value is unknown at plan, so
+roughly two thirds of each environment's outputs cannot be asserted there at
+all, and preconditions that depend on a data source are never evaluated. The
+`diagnostics` module discovers what a resource can emit before refusing to
+create a setting that would enable nothing, and that check is unreachable
+until apply.
 
 **Every configuration in the repository now has tests — 22 modules, 4
 environments and the bootstrap — and the module

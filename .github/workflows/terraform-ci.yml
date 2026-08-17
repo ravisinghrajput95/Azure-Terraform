@@ -287,6 +287,13 @@ jobs:
             exit 1
           fi
 
+      # ShellCheck reads the scripts; this runs them. The failure it guards
+      # against is not a crash but a script that exits 0 without checking
+      # anything — `set -euo pipefail` missing, so a failed command is ignored
+      # and the next runs against empty output. Needs no Azure.
+      - name: Script invariants
+        run: ./scripts/tests/test-scripts.sh
+
   ##############################################################################
   # Security scanning
   #
