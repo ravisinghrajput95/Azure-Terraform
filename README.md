@@ -108,18 +108,27 @@ make check              # fmt-check, validate, test, lint
 make plan ENV=dev       # needs credentials
 ```
 
-**330 tests** run with `mock_provider` — no credentials, no backend, nothing
+**346 tests** run with `mock_provider` — no credentials, no backend, nothing
 created. They test the preconditions, not the provider: a test asserting that
 `azurerm_storage_account` sets a name is testing HashiCorp's code.
 
-They split into two jobs. **288 module tests** check each module against its
-own contract. **42 environment tests** check the composition — that a name
+They split into two jobs. **289 module tests** check each module against its
+own contract. **57 environment tests** check the composition — that a name
 derived in one place reaches every consumer, that a subnet which must not carry
 a default route does not, that the profile's decision reaches the resource it
 governs. That layer is invisible to a module test, and for `qa`, `stage` and
 `prod` it is the only verification available at all: none of the three can be
 applied on this subscription, so a mocked plan is the whole of it. `stage`'s
 suite is the only thing that executes the Azure Firewall egress path anywhere.
+
+The environment tests also cover the **NSG rule matrices** — 1,472 lines that
+are the security policy of the platform and had no test of their own. They
+assert reach rather than verdict: which source is admitted to which port, since
+"Allow 443 inbound" reads identically whether the source is one subnet or the
+whole internet. The tier boundary, SSH arriving only via Bastion, and the
+private-endpoint data ports are each pinned — that last one is the rule that
+named port 6380 for months while the platform's Managed Redis listens on 10000,
+silently refusing every call from a pod to the cache.
 
 What they do not prove is that Azure accepts the plan. A mocked plan shows the
 configuration is internally coherent, not that the API agrees.

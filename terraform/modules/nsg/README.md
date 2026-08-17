@@ -113,6 +113,16 @@ ascending priority — not alphabetically. Priority is zero-padded in the sort
 key because `sort()` is lexicographic; without padding, priority 1000 sorts
 before 200.
 
+**It carries each rule's reach, not just its verdict.** Source and destination
+prefixes and destination ports are included, because an entry reporting only
+"Allow, Tcp, 443" reads identically whether the source is one subnet or the
+whole internet — and it is the source that decides whether a tier boundary is
+real. Azure accepts each of those as either a singular `..._prefix` or a plural
+`..._prefixes`, and the two forms express the same policy, so both are
+collapsed into one list. Without that, diffing an environment written one way
+against an environment written the other reports a policy change where there is
+none.
+
 **Associations depend on the rules existing first.** Attaching an NSG whose
 rules have not yet been created would briefly apply an effective default-deny
 to live traffic.
@@ -235,6 +245,6 @@ No modules.
 | <a name="output_names"></a> [names](#output\_names) | Map of NSG name to name, for callers that need the map shape. |
 | <a name="output_nsgs_with_explicit_inbound_deny"></a> [nsgs\_with\_explicit\_inbound\_deny](#output\_nsgs\_with\_explicit\_inbound\_deny) | NSGs carrying an explicit inbound deny-all rule. Any NSG missing from this list relies on Azure's built-in AllowVnetInBound at priority 65000, which permits all intra-VNet traffic and therefore enforces no tier isolation. |
 | <a name="output_rule_count"></a> [rule\_count](#output\_rule\_count) | Total number of security rules managed by this module. |
-| <a name="output_rules_by_nsg"></a> [rules\_by\_nsg](#output\_rules\_by\_nsg) | Map of NSG name to its rules in Azure's evaluation order — direction, then ascending priority. A single artefact for reviewing effective policy or diffing it between environments. |
+| <a name="output_rules_by_nsg"></a> [rules\_by\_nsg](#output\_rules\_by\_nsg) | Map of NSG name to its rules in Azure's evaluation order — direction, then ascending priority. A single artefact for reviewing effective policy or diffing it between environments. Each rule carries its source and destination prefixes and destination ports as lists, with the singular and plural forms of each collapsed into one, so a rule's reach can be read without knowing which form declared it. |
 | <a name="output_unassociated_nsgs"></a> [unassociated\_nsgs](#output\_unassociated\_nsgs) | NSGs that were created but attached to no subnet. Their rules have no effect. Usually this is a staged configuration, occasionally it is a subnet reference that silently evaluated to null. |
 <!-- END_TF_DOCS -->

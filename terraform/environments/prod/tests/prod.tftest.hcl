@@ -270,3 +270,124 @@ run "prod_does_not_fit_this_subscriptions_quota" {
     error_message = "prod's peak footprint must be 80 vCPU: twenty Standard_D4s_v5 at the autoscale ceiling. This subscription's regional limit is 4."
   }
 }
+
+################################################################################
+# The NSG rule matrix — the environment's security policy
+#
+# nsg-rules.tf is 379 lines and until now nothing tested a single rule in it.
+# The nsg module tests cover the mechanism — priority collisions, a missing
+# catch-all deny, two NSGs claiming one subnet — but not the policy, and the
+# policy is what decides which source reaches which port.
+#
+# These matter more here than in dev. This environment has never been applied,
+# so no traffic has ever confirmed that a rule admits what it claims to; and
+# these three matrices were copied from one another, which is how four stray
+# references to "qa" came to sit in stage's and prod's files, one of them in a
+# rule description that deploys to Azure.
+################################################################################
+
+# The tighter of the two ingress postures, and the reason this environment can
+# validate an ingress path dev cannot: traffic reaches the application tier
+# from the Application Gateway subnet and from nowhere else. dev must name
+# "Internet" instead, because a public load balancer DNATs without replacing
+# the source address.
+run "the_application_tier_admits_only_the_gateway_subnet" {
+  command = plan
+
+  assert {
+    condition = alltrue(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules :
+        join(",", r.source_address_prefixes) == output.subnet_cidrs["snet-agw-prod-cus"]
+        if r.name == "Allow-HTTPS-Ingress"
+      ]
+    ]))
+    error_message = "Application tier ingress must be sourced from the Application Gateway subnet. If this reads \"Internet\", the WAF is no longer the only way in and every request can bypass it."
+  }
+}
+
+# Skipping a tier is a lateral movement path. The business tier accepts the
+# application subnet and nothing else — in particular not the gateway subnet,
+# which is what would let ingress reach it directly.
+run "the_business_tier_cannot_be_reached_from_ingress" {
+  command = plan
+
+  assert {
+    condition = alltrue(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules :
+        join(",", r.source_address_prefixes) == output.subnet_cidrs["snet-app-prod-cus"]
+        if r.name == "Allow-App-Tier"
+      ]
+    ]))
+    error_message = "The business tier must admit the application subnet only. Naming the gateway subnet here makes the three-tier boundary diagrammatic rather than real."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules :
+        !contains(r.source_address_prefixes, output.subnet_cidrs["snet-agw-prod-cus"])
+        if r.name == "Allow-App-Tier"
+      ]
+    ]))
+    error_message = "The gateway subnet must never appear as a source on the business tier."
+  }
+}
+
+# The rule this repository got wrong for months in dev: it named port 6380 —
+# Azure Cache for Redis — while the platform runs Azure MANAGED Redis, which
+# listens on 10000. Every call from a pod to Redis fell through to the deny.
+# Nothing surfaced it, and in an environment that has never run, nothing could.
+run "the_private_endpoint_subnet_admits_exactly_the_data_ports" {
+  command = plan
+
+  assert {
+    condition = length(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules : r if r.name == "Allow-Data-Plane-From-Workload"
+      ]
+    ])) == 1
+    error_message = "Exactly one rule must admit the workload to the data planes."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules :
+        join(",", r.destination_port_ranges) == "443,1433,10000"
+        if r.name == "Allow-Data-Plane-From-Workload"
+      ]
+    ]))
+    error_message = "The data-plane rule must admit exactly 443 (Key Vault, Storage), 1433 (SQL) and 10000 (Managed Redis). NOT 6380 — that is Azure Cache for Redis, which this platform does not use."
+  }
+
+  # Under Azure CNI Overlay a pod's traffic leaving the cluster is SNATed to
+  # its NODE address, so the source must be the AKS subnet. Naming the app or
+  # biz subnets matches nothing and every data-plane call is silently refused.
+  assert {
+    condition = alltrue(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules :
+        join(",", r.source_address_prefixes) == output.subnet_cidrs["snet-aks-prod-cus"]
+        if r.name == "Allow-Data-Plane-From-Workload"
+      ]
+    ]))
+    error_message = "The data-plane rule must be sourced from the AKS NODE subnet."
+  }
+}
+
+run "ssh_is_admitted_only_from_the_bastion_subnet" {
+  command = plan
+
+  assert {
+    condition = alltrue(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules :
+        join(",", r.source_address_prefixes) == output.subnet_cidrs["AzureBastionSubnet"]
+        if r.direction == "Inbound" && r.access == "Allow" && contains(r.destination_port_ranges, "22")
+      ]
+    ]))
+    error_message = "Every inbound rule admitting SSH must be sourced from the Bastion subnet and nothing else. No instance carries a public IP, so a second source here is a way in that bypasses Bastion."
+  }
+}

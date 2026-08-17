@@ -326,3 +326,112 @@ run "an_impossible_cap_reset_hour_is_refused" {
     var.log_analytics_daily_cap_reset_hour_utc,
   ]
 }
+
+################################################################################
+# The NSG rule matrix — the environment's security policy
+#
+# nsg-rules.tf is 335 lines and until now nothing tested a single rule in it.
+# The module tests cover the mechanism — priority collisions, a missing
+# catch-all deny, two NSGs claiming one subnet — but not the policy, and the
+# policy is the part that decides what can reach what.
+#
+# These assert reach: which source is admitted to which port. A rule's access
+# and port read the same whether the source is one subnet or the whole
+# internet, which is why the assertions below name the source every time.
+################################################################################
+
+# The rule this repository got wrong for months, and the reason these tests
+# exist at all. It named port 6380 — Azure Cache for Redis — while the platform
+# runs Azure MANAGED Redis, which listens on 10000. Every call from a pod to
+# Redis fell through to the deny below it.
+#
+# Nothing surfaced it: the private endpoint existed, the DNS zone resolved, the
+# NSG read as configured, and the connection was simply refused.
+run "the_private_endpoint_subnet_admits_exactly_the_data_ports" {
+  command = plan
+
+  assert {
+    condition = length(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules : r if r.name == "Allow-Data-Plane-From-Workload"
+      ]
+    ])) == 1
+    error_message = "Exactly one rule must admit the workload to the data planes. If it is gone, every call from a pod to SQL, Redis, Key Vault and Storage hits the fallthrough deny and is simply refused."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules :
+        join(",", r.destination_port_ranges) == "443,1433,10000"
+        if r.name == "Allow-Data-Plane-From-Workload"
+      ]
+    ]))
+    error_message = "The data-plane rule must admit exactly 443 (Key Vault, Storage), 1433 (SQL) and 10000 (Managed Redis). NOT 6380 — that is Azure Cache for Redis, which this platform does not use, and naming it silently breaks every cache call."
+  }
+
+  # Under Azure CNI Overlay a pod's traffic leaving the cluster is SNATed to
+  # its NODE address, so the source must be the AKS subnet. Naming the app or
+  # biz subnets here matches nothing and produces the same silent refusal.
+  assert {
+    condition = alltrue(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules :
+        join(",", r.source_address_prefixes) == output.subnet_cidrs["snet-aks-dev-cus"]
+        if r.name == "Allow-Data-Plane-From-Workload"
+      ]
+    ]))
+    error_message = "The data-plane rule must be sourced from the AKS NODE subnet. Pod traffic is SNATed to the node address under CNI Overlay, so any other source matches nothing."
+  }
+}
+
+run "ssh_is_admitted_only_from_the_bastion_subnet" {
+  command = plan
+
+  # No instance carries a public IP, so Bastion is the only operator path in.
+  # A second source here would be a way in that bypasses it.
+  assert {
+    condition = alltrue(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules :
+        join(",", r.source_address_prefixes) == output.subnet_cidrs["AzureBastionSubnet"]
+        if r.direction == "Inbound" && r.access == "Allow" && contains(r.destination_port_ranges, "22")
+      ]
+    ]))
+    error_message = "Every inbound rule admitting SSH must be sourced from the Bastion subnet and nothing else."
+  }
+}
+
+# NOT TESTED, because it cannot fail: that every Allow sits below the
+# fallthrough deny at 4096 and is therefore actually reached.
+#
+# The nsg module bounds every priority to [100, 4096] and rejects two rules at
+# the same priority in the same NSG and direction. The fallthrough deny already
+# occupies 4096 inbound, so an inbound Allow can never reach it — setting one
+# to 4096 trips the collision check three rules earlier, which is what a
+# mutation run confirmed. An OUTBOUND Allow can sit at 4096, but there is no
+# outbound deny for it to hide behind, so the property is vacuous there.
+#
+# The structural guarantee is stronger than the test would have been. What is
+# left worth asserting is that the deny exists at all, which
+# `every_workload_subnet_is_routed_and_secured` above already covers.
+
+# dev is the only environment whose application tier accepts traffic straight
+# from the internet, and it is not a choice: a public load balancer DNATs
+# without replacing the source address, so there is no gateway subnet to name.
+# Every other environment tightens this to the Application Gateway subnet, and
+# the contrast is the thing worth pinning.
+run "the_application_tier_ingress_source_is_the_internet_in_dev" {
+  command = plan
+
+  assert {
+    condition = alltrue(flatten([
+      for nsg, rules in output.nsg_rules : [
+        for r in rules :
+        join(",", r.source_address_prefixes) == "Internet"
+        if r.name == "Allow-HTTPS-Ingress"
+      ]
+    ]))
+    error_message = "dev's application tier ingress must be sourced from Internet, because a public load balancer preserves the original source address. If this reads as a subnet CIDR, the profile has switched ingress and the rule no longer matches anything."
+  }
+}

@@ -64,6 +64,28 @@ locals {
         access      = local.rules[key].access
         protocol    = local.rules[key].protocol
         description = local.rules[key].description
+
+        # WHO the rule admits, and to WHAT. Without these the inventory
+        # reports that an Allow exists on a port and not where it may come
+        # from, which is the half that decides whether a tier boundary is real
+        # — "Allow 443 inbound" reads identically whether the source is one
+        # subnet or the whole internet.
+        #
+        # Singular and plural forms are collapsed to one list each. The
+        # variable requires exactly one of the two to be set, so exactly one
+        # side of each coalesce contributes and the result is never ambiguous.
+        source_address_prefixes = coalescelist(
+          local.rules[key].source_address_prefixes != null ? local.rules[key].source_address_prefixes : [],
+          local.rules[key].source_address_prefix != null ? [local.rules[key].source_address_prefix] : [],
+        )
+        destination_address_prefixes = coalescelist(
+          local.rules[key].destination_address_prefixes != null ? local.rules[key].destination_address_prefixes : [],
+          local.rules[key].destination_address_prefix != null ? [local.rules[key].destination_address_prefix] : [],
+        )
+        destination_port_ranges = coalescelist(
+          local.rules[key].destination_port_ranges != null ? local.rules[key].destination_port_ranges : [],
+          local.rules[key].destination_port_range != null ? [local.rules[key].destination_port_range] : [],
+        )
       }
     ]
   }

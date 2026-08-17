@@ -43,7 +43,7 @@ output "rule_count" {
 }
 
 output "rules_by_nsg" {
-  description = "Map of NSG name to its rules in Azure's evaluation order — direction, then ascending priority. A single artefact for reviewing effective policy or diffing it between environments."
+  description = "Map of NSG name to its rules in Azure's evaluation order — direction, then ascending priority. A single artefact for reviewing effective policy or diffing it between environments. Each rule carries its source and destination prefixes and destination ports as lists, with the singular and plural forms of each collapsed into one, so a rule's reach can be read without knowing which form declared it."
   value       = local.rules_by_nsg
 }
 

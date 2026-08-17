@@ -66,6 +66,88 @@ run "accepts_a_coherent_rule_set" {
 }
 
 ################################################################################
+# The rule inventory reports reach, not just verdict
+#
+# rules_by_nsg exists to be diffed between environments. That only works if it
+# carries WHO a rule admits: "Allow 443 inbound" reads identically whether the
+# source is one subnet or the whole internet.
+#
+# Azure accepts a source as either source_address_prefix or
+# source_address_prefixes, and the two forms describe the same policy. The
+# inventory collapses them into one list so a diff between an environment using
+# the singular form and one using the plural does not report a policy change
+# where there is none.
+################################################################################
+
+run "the_inventory_carries_each_rules_reach" {
+  command = plan
+
+  variables {
+    network_security_groups = {
+      aks = {
+        subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-net/providers/Microsoft.Network/virtualNetworks/vnet/subnets/snet-aks"
+        rules = {
+          # Singular source, plural destination ports.
+          allow-https-in = {
+            priority                = 100
+            direction               = "Inbound"
+            access                  = "Allow"
+            protocol                = "Tcp"
+            destination_port_ranges = ["80", "443"]
+            source_address_prefix   = "10.10.0.0/16"
+          }
+          # Plural source, singular destination port — the same policy shape
+          # expressed the other way round.
+          allow-ssh-in = {
+            priority                = 120
+            direction               = "Inbound"
+            access                  = "Allow"
+            protocol                = "Tcp"
+            destination_port_range  = "22"
+            source_address_prefixes = ["10.10.1.0/24", "10.10.2.0/24"]
+          }
+          deny-all-in = {
+            priority                   = 4096
+            direction                  = "Inbound"
+            access                     = "Deny"
+            protocol                   = "*"
+            source_address_prefix      = "*"
+            destination_address_prefix = "*"
+            destination_port_range     = "*"
+          }
+        }
+      }
+    }
+  }
+
+  assert {
+    condition     = join(",", output.rules_by_nsg["aks"][0].source_address_prefixes) == "10.10.0.0/16"
+    error_message = "A rule declaring a single source prefix must report it as a one-element list."
+  }
+
+  assert {
+    condition     = join(",", output.rules_by_nsg["aks"][0].destination_port_ranges) == "80,443"
+    error_message = "A rule declaring plural destination ports must report all of them."
+  }
+
+  assert {
+    condition     = join(",", output.rules_by_nsg["aks"][1].source_address_prefixes) == "10.10.1.0/24,10.10.2.0/24"
+    error_message = "A rule declaring plural source prefixes must report all of them, in the order given."
+  }
+
+  assert {
+    condition     = join(",", output.rules_by_nsg["aks"][1].destination_port_ranges) == "22"
+    error_message = "A rule declaring a single destination port must report it as a one-element list."
+  }
+
+  # Evaluation order, not declaration order: the deny at 4096 sorts last.
+  assert {
+    condition     = output.rules_by_nsg["aks"][2].name == "deny-all-in"
+    error_message = "The inventory must be sorted in Azure's evaluation order, so the fallthrough deny is last."
+  }
+}
+
+################################################################################
 # Priority collisions
 #
 # Two rules at the same priority in one NSG. Azure refuses the second, and the

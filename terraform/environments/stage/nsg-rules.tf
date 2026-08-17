@@ -29,11 +29,11 @@ locals {
   agw_subnet     = local.agw_subnet_name
   bastion_subnet = "AzureBastionSubnet"
 
-  # qa fronts the application tier with an Application Gateway, so the gateway
-  # subnet is the ONLY permitted ingress source — not "Internet", which is what
-  # dev must use because a public load balancer DNATs without replacing the
-  # source address. This is the tighter of the two postures and the reason qa
-  # can validate an ingress path dev cannot.
+  # stage fronts the application tier with an Application Gateway, so the
+  # gateway subnet is the ONLY permitted ingress source — not "Internet", which
+  # is what dev must use because a public load balancer DNATs without replacing
+  # the source address. This is the tighter of the two postures and the reason
+  # stage can validate an ingress path dev cannot.
   app_ingress_source = module.profile.enable_application_gateway ? local.cidr[local.agw_subnet] : "Internet"
 
   # Reused across every NSG. Placed at 4096, the highest usable priority, so
@@ -143,7 +143,7 @@ locals {
           destination_port_range     = "443"
           source_address_prefix      = local.app_ingress_source
           destination_address_prefix = "*"
-          description                = "HTTPS from the Application Gateway subnet, which is the only ingress path in qa."
+          description                = "HTTPS from the Application Gateway subnet, which is the only ingress path in this environment."
         }
         "Allow-LB-Probe"   = local.allow_lb_probe
         "Allow-SSH-Admin"  = local.allow_ssh_from_bastion
@@ -277,8 +277,8 @@ locals {
     # into a subnet whose NSG lacks these, and the error names Bastion rather
     # than the missing rule.
     #
-    # qa runs Bastion Basic, which occupies this subnet. dev's Developer SKU
-    # attaches by VNet ID and leaves its equivalent subnet empty.
+    # stage runs Bastion Standard, which occupies this subnet. dev's Developer
+    # SKU attaches by VNet ID and leaves its equivalent subnet empty.
     ############################################################################
     (local.bastion_nsg_name) = {
       subnet_id = module.networking.subnet_ids[local.bastion_subnet]
