@@ -91,8 +91,8 @@ decision lives, not only here.
 ## Layout
 
 ```
-docs/                architecture, networking and deployment documentation
-scripts/             four checks that answer what terraform plan cannot
+docs/                architecture, networking, deployment and testing documentation
+scripts/             six checks that answer what terraform plan cannot
 bootstrap/           Phase 0 — the state backend, on local state by necessity
 terraform/
 ├── environments/    one root module per environment (dev, qa, stage, prod)
@@ -108,100 +108,53 @@ make check              # fmt-check, validate, test, test-sh, lint, conformance
 make plan ENV=dev       # needs credentials
 ```
 
+---
+
+## What is verified
+
 **361 tests** run with `mock_provider` — no credentials, no backend, nothing
 created. They test the preconditions, not the provider: a test asserting that
 `azurerm_storage_account` sets a name is testing HashiCorp's code.
 
-**290 module tests** check each module against its own contract. **10 bootstrap
-tests** cover Phase 0, the state backend — the one configuration that is
-actually deployed and the only one on local state, where a mistake is not
-recoverable by reading state back, because the account is what holds the state.
-**61 environment tests** check the composition — that a
-name derived in one place reaches every consumer, that a subnet which must not
-carry a default route does not, that the profile's decision reaches the
-resource it governs. That layer is invisible to a module test, and for `qa`, `stage` and
-`prod` it is the only verification available at all: none of the three can be
-applied on this subscription, so a mocked plan is the whole of it. `stage`'s
-suite is the only thing that executes the Azure Firewall egress path anywhere.
+**290 module tests** check each module against its own contract. **61
+environment tests** check the composition — that a name derived in one place
+reaches every consumer, that a subnet which must not carry a default route does
+not, that the profile's decision reaches the resource it governs. **10 bootstrap
+tests** cover Phase 0, the state backend, the one configuration that is actually
+deployed and the only one on local state.
 
-The environment tests also cover the **NSG rule matrices** — 1,472 lines that
-are the security policy of the platform and had no test of their own. They
-assert reach rather than verdict: which source is admitted to which port, since
-"Allow 443 inbound" reads identically whether the source is one subnet or the
-whole internet. The tier boundary, SSH arriving only via Bastion, and the
-private-endpoint data ports are each pinned — that last one is the rule that
-named port 6380 for months while the platform's Managed Redis listens on 10000,
-silently refusing every call from a pod to the cache.
+For `qa`, `stage` and `prod` those suites are the only verification available at
+all: none of the three can be applied on this subscription, so a mocked plan is
+the whole of it, and `stage`'s is the only thing that executes the Azure
+Firewall egress path anywhere. What none of them proves is that Azure accepts
+the plan — a mocked plan shows the configuration is internally coherent, not
+that the API agrees.
 
-What they do not prove is that Azure accepts the plan. A mocked plan shows the
-configuration is internally coherent, not that the API agrees.
+**Every configuration in the repository has tests, and every one of them was
+measured rather than asserted.** A passing test proves nothing on its own, so
+each guard was broken in turn to check that something noticed:
 
-Most runs are plan-only, and each environment adds one that **applies against
-the mocks**. That is not for realism — the values are generated — but for
-reach: anything derived from a provider-computed value is unknown at plan, so
-roughly two thirds of each environment's outputs cannot be asserted there at
-all, and preconditions that depend on a data source are never evaluated. The
-`diagnostics` module discovers what a resource can emit before refusing to
-create a setting that would enable nothing, and that check is unreachable
-until apply.
+| Layer | Method | Result |
+|---|---|---|
+| 22 modules | Weaken each precondition to an always-true expression | **105 of 110** confirmed. The other 5 cannot fire at all, each written up in its own test file |
+| 4 environments, bootstrap | Break the configuration — a composition root has no preconditions of its own | **81 mutations: 70** caught by the run block that claims to guard them, **11** caught first by a child module's precondition, **none unguarded** |
 
-**Every configuration in the repository now has tests — 22 modules, 4
-environments and the bootstrap — and every one of them was measured rather than
-asserted.** Every precondition in the repository was weakened to an always-true
-expression in turn, with the suite re-run each time, to check that some test
-actually fails when it stops guarding. **105 of 110 are confirmed that way. The
-other 5 cannot fire at all**, and each is written up in its own test file:
+That second row is the distinction worth drawing. A mutation that merely turns
+the suite red proves nothing, and an assertion that never fires for its own
+reason is untested whatever colour the suite is — so a catch by a module
+precondition is reported as its own outcome rather than counted as coverage.
 
-| Precondition | Why it can never fire |
-|---|---|
-| `bastion`, `load-balancer` — public IP name | The public IP resource rejects a null `name` first, so Terraform stops before preconditions are evaluated |
-| `monitor` — cap warning window | The variable is validated to `P1D` or `P2D`, 1440 and 2880 minutes. Every permitted value already clears the 1440 bar |
-| `naming` — generated name constraints | The upstream validations bound every input, so no constructible input produces an invalid name |
-| `recovery-services` — file share retention alignment | `azurerm_backup_policy_file_share` accepts `Daily` or `Hourly` only; the provider refuses `Weekly`, so there is no weekly schedule to misalign against |
+Measuring found three defects the suites had been green over: a WAF assertion
+that read the profile's intention rather than the mode wired into the gateway,
+two environments with their firewall next hops transposed, and an assertion
+pinning the same value its own input supplied.
 
-None is a missing test. Each is a guard made redundant by a stricter check
-earlier in the chain — worth keeping, worth not counting as coverage.
+The reasoning, the five preconditions that cannot fire, and the known gaps are
+in [`docs/TESTING.md`](docs/TESTING.md).
 
-The environment and bootstrap suites are measured too, by a different
-mechanism. A composition root declares no resources, so it has no preconditions
-of its own to weaken; the mutation target is the **configuration** instead.
-`scripts/mutation-test.py` holds **81 mutations** — the data-plane rule names
-6380 again, the workload route table loses its default route, the profile is
-handed the wrong environment name — each naming the `run` block that claims to
-guard it. **70 are caught by that run block. The other 11 are caught first by a
-precondition inside a child module**, which is a real result rather than a
-pass: the property holds, but the environment assertion is not what holds it.
-None is unguarded.
+---
 
-That distinction is the whole point. A mutation that merely turns the suite red
-proves nothing — it may have broken the plan outright, or been caught by an
-unrelated assertion three runs earlier — and an assertion that never fires for
-its own reason is untested whatever colour the suite is.
-
-Two limits shape what a mutation can measure here. `terraform test` halts a
-file at the first run that **errors**, as opposed to one that fails an
-assertion, so any mutation invalidating the plan is attributed to the first run
-block and no later one executes. And `expect_failures` only accepts checkable
-objects in the root module under test, so a failure raised inside a child
-module cannot be named from an environment test at all. Both push the same way:
-failure modes belong to the module that owns them, and the environment tests
-assert the positive wiring.
-
-Running it found three defects the suites had been green over:
-
-| Found | What was actually happening |
-|---|---|
-| A WAF assertion that tested nothing | `waf_posture` read the profile's *intention*, not the mode wired into the gateway. Set prod's WAF to Detection and the suite stayed green while the output still said `Prevention: matching requests are BLOCKED` |
-| Two environments' next hops, transposed | `stage` pinned `10.30.0.4` against its own `10.40.0.0/16`, and `prod` the mirror image. Azure accepts an out-of-VNet next hop — that is how you reach an appliance across a peering — so the plan is clean and every workload packet leaves for an address that does not exist in that network |
-| An assertion weaker than its message | bootstrap asserts its summary reports 30 days while its own input is 30, so it cannot tell a derived value from a hardcoded one |
-
-Writing the tests found five real defects, four of one kind: expressions
-relying on `&&` and `||` to short-circuit, which Terraform 1.9.8 does not do.
-Measuring them afterwards found three more, listed above — which is the
-argument for measuring.
-Most were invisible to `terraform validate`, which does not evaluate those
-paths, and to every environment plan, which needs credentials this repository
-does not have.
+## Documents
 
 | Document | Contents |
 |---|---|
@@ -213,6 +166,7 @@ does not have.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Design decisions and rejected alternatives, as-designed and as-built diagrams, Zero Trust mapping, cost |
 | [`docs/NETWORKING.md`](docs/NETWORKING.md) | CIDR allocation, subnet plan, NSG rule matrix, routing, private DNS, CAF naming |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Module dependency graph, deployment phases, gates, rollback characteristics |
+| [`docs/TESTING.md`](docs/TESTING.md) | What is verified and what is not, how the tests were measured, and the known gaps |
 
 ---
 
