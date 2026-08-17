@@ -1,6 +1,6 @@
 # scripts
 
-Five checks. Each one exists because its absence caused a real failure in this
+Six checks. Each one exists because its absence caused a real failure in this
 repository, and each one answers a question `terraform plan` cannot.
 
 They are read-only apart from `preflight.sh --probe-sql`, which creates and
@@ -13,9 +13,10 @@ immediately deletes a throwaway SQL server. None of them applies anything.
 | [`verify-aks-access.sh`](verify-aks-access.sh) | Can anyone actually reach the cluster? |
 | [`drift.sh`](drift.sh) | Does Azure still match the code, per environment? |
 | [`check-environment-conformance.py`](check-environment-conformance.py) | Do the four environments still agree where they must? |
+| [`mutation-test.py`](mutation-test.py) | Do the environment and bootstrap tests fail when the thing they claim to guard breaks? |
 
-The first four need Azure credentials. The last does not — it reads `.tf` files
-and runs in CI on every push.
+The first four need Azure credentials. The last two do not — one reads `.tf`
+files, the other runs the test suites against mocked providers.
 
 ---
 
@@ -147,6 +148,88 @@ Both quoted and heredoc descriptions are read. That is not incidental: the
 `subscription_vcpu_quota` descriptions that claimed qa's vCPU figure inside
 `stage` and `prod` were heredocs, so a check reading only quoted strings would
 have missed the defect that motivated writing this.
+
+---
+
+## `mutation-test.py`
+
+```bash
+./scripts/mutation-test.py                     # everything, targets in parallel
+./scripts/mutation-test.py --target stage      # one environment
+./scripts/mutation-test.py --dry-run           # do the mutations still apply?
+./scripts/mutation-test.py --check-catalogue   # do they still name real run blocks?
+```
+
+The 22 module suites were measured rather than asserted: every precondition was
+weakened to an always-true expression in turn and the suite re-run, to check
+that something fails when the guard stops guarding. The environment and
+bootstrap suites never got that treatment — they were spot-checked while being
+written, which proves an assertion *can* fail, not that it fails for the reason
+it claims. This runs the same campaign against them.
+
+A composition root has no preconditions of its own to weaken; it declares no
+resources. So the mutation target is the **configuration**, not the guard. Each
+entry breaks one thing a specific `run` block claims to hold — the data-plane
+rule names 6380 again, the workload route table loses its default route, the
+profile is handed the wrong environment name — and records whether that run
+block noticed.
+
+What makes it a measurement rather than a smoke test is the third outcome:
+
+| Outcome | Means |
+|---|---|
+| `guarded` | The named run block failed. The assertion earns its place |
+| `guarded-elsewhere` | Something else failed first. The named claim is still untested |
+| `UNGUARDED` | The suite passed with the configuration broken |
+
+A mutation that merely turns the suite red proves nothing. It may have broken
+the plan outright, or tripped a precondition inside a child module, or been
+caught by an unrelated assertion three runs earlier — and an assertion that
+never fires for its own reason is an assertion whose claim is untested,
+whatever colour the suite is.
+
+### What `guarded-elsewhere` usually means here
+
+**`terraform test` stops a file at the first run that ERRORS**, as opposed to
+one that merely fails an assertion. So any mutation that makes the plan invalid
+is reported against the *first* run block in the file and no later one executes
+at all. That is the environment-test analogue of the `expect_failures`
+limitation in CONTRIBUTING.md, and it has the same consequence: a claim made by
+a later run block cannot be measured with a mutation that breaks the plan. Such
+a mutation has to change an asserted *value* while leaving the configuration
+valid, or the thing it proves is that a child module's precondition works —
+which the module's own suite already established.
+
+The second common cause is a mutation the test file's own pinned variables make
+invisible: hardcoding a value that the pinned inputs already equal changes
+nothing to assert on.
+
+### Safety
+
+Mutations are applied to the working tree and reverted with `git checkout`
+immediately after each run, including on failure and on interrupt. The run
+**refuses to start if any target directory is dirty**, because the revert would
+otherwise discard uncommitted work.
+
+No Azure. Every suite mocks the provider, so this runs plans and applies
+against mocks: no credentials, no backend, nothing created. The subprocess
+environment is built explicitly rather than inherited, so an `ARM_*` credential
+sitting in the caller's shell cannot reach a provider.
+
+`bootstrap` is edited too. It is the one configuration that is deployed and the
+one on local state, so the live `terraform.tfstate` there is checksummed before
+and after the whole campaign and the run fails if it moved. It should not:
+mutations touch `.tf` files only and `terraform test` keeps its own ephemeral
+state.
+
+### It is not part of `make check`
+
+A full campaign is 79 suite runs, around forty minutes wall-clock with the
+targets in parallel. What *is* in `make check`, through `make test-sh`, is
+`--check-catalogue`: it verifies every mutation still names a run block that
+exists. A renamed run block would otherwise make its mutation permanently
+uncatchable, reported as a weak assertion in the suite rather than as a stale
+entry in the catalogue — the campaign accusing the tests of its own fault.
 
 ---
 

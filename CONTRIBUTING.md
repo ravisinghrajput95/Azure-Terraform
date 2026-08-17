@@ -195,6 +195,47 @@ subnet a DISTINCT one — `mock_resource` defaults are per type, and the `nsg`
 module groups associations by subnet ID to catch two NSGs claiming one subnet,
 so identical IDs make that condition genuinely true.
 
+### An assertion is not verified until something has made it fail
+
+`./scripts/mutation-test.py` breaks one thing in the configuration, re-runs the
+suite, and records whether the run block that claims to guard it noticed. Add a
+mutation alongside any new environment or bootstrap assertion — the catalogue
+lives at the top of that script, one entry per claim, phrased as the defect
+someone would plausibly ship.
+
+Three outcomes, and only the first is coverage:
+
+- `guarded` — the named run block failed.
+- `guarded-elsewhere` — something else failed. The named claim is still
+  untested, whatever colour the suite is.
+- `UNGUARDED` — the suite passed with the configuration broken.
+
+Two things make a mutation land in the second bucket for reasons that are not
+about the assertion at all, and both are worth knowing before writing one:
+
+**`terraform test` stops a file at the first run that ERRORS**, unlike one that
+merely fails an assertion. Any mutation that makes the plan invalid is
+therefore reported against the *first* run block in the file, and no later run
+executes. A claim made further down the file can only be measured by a mutation
+that changes an asserted value while leaving the plan valid. If breaking it
+necessarily breaks the plan, the failure belongs to the child module's
+precondition, and that is where the module's own suite already tests it.
+
+**A weakened condition must still reference something.** Terraform refuses both
+`condition = true` in a `precondition` — *"the condition expression must refer
+to at least one object from elsewhere in the configuration, or else its result
+would not be checking anything"* — and a variable `validation` that does not
+mention its own variable. The literal always-true form makes Terraform reject
+the configuration rather than evaluate it, so the suite goes red for a reason
+that has nothing to do with the test. Weaken to an expression that still refers
+to the thing and cannot fail: `var.days >= 0`, or
+`can(regex("^.*$", var.name))`.
+
+`make check` runs `--check-catalogue`, which verifies each mutation still names
+a run block that exists. Renaming a run block without updating its mutation
+makes that mutation permanently uncatchable, and it reports as a weak assertion
+in the suite rather than as a stale entry in the catalogue.
+
 **`expect_failures` cannot name anything inside a child module.** It only
 accepts checkable objects in the root module under test, and a composition root
 declares no resources of its own — so the failures that matter most there

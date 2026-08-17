@@ -86,6 +86,66 @@ for script in "${scripts[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
+# The Python checks
+#
+# ShellCheck does not read these and neither did anything else, so until now
+# the two scripts that run with no credentials — the ones CI can actually
+# execute — were the least checked files in this directory.
+#
+# The executable bit is asserted for the same reason it is asserted on the
+# shell scripts, and for one more: `make conformance` and the mutation campaign
+# both invoke these through python3, so a lost bit is invisible until someone
+# runs the file directly.
+# ---------------------------------------------------------------------------
+
+shopt -s nullglob
+py_scripts=("${SCRIPTS}"/*.py)
+shopt -u nullglob
+
+if [ ${#py_scripts[@]} -eq 0 ]; then
+  echo "no Python scripts found in ${SCRIPTS} — refusing to report success over an empty set" >&2
+  exit 1
+fi
+
+for script in "${py_scripts[@]}"; do
+  name="$(basename "$script")"
+
+  if python3 -m py_compile "$script" 2>/dev/null; then
+    pass "${name}: compiles"
+  else
+    fail "${name}: compiles" "python3 -m py_compile reported a syntax error"
+  fi
+
+  if head -n 1 "$script" | grep -qE '^#!'; then
+    pass "${name}: shebang"
+  else
+    fail "${name}: shebang" "no shebang, so the file cannot be run directly"
+  fi
+
+  if [ -x "$script" ]; then
+    pass "${name}: executable"
+  else
+    fail "${name}: executable" "chmod +x, or it can only be run via python3"
+  fi
+done
+
+find "${SCRIPTS}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+
+# The mutation catalogue names a run block per mutation, and a renamed run
+# block would make that mutation permanently uncatchable — reported as a weak
+# assertion in the suite rather than as a stale entry in the catalogue. This is
+# the check that keeps the campaign honest about its own rot. It reads files
+# only: no terraform, no edits, safe on a dirty tree.
+if [ -x "${SCRIPTS}/mutation-test.py" ]; then
+  if "${SCRIPTS}/mutation-test.py" --check-catalogue >/dev/null 2>&1; then
+    pass "mutation-test.py: every mutation names a run block that exists"
+  else
+    fail "mutation-test.py: every mutation names a run block that exists" \
+      "run ./scripts/mutation-test.py --check-catalogue for the list"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # The one behaviour testable with no subscription
 #
 # preflight.sh takes a region and refuses without one. Everything past that
