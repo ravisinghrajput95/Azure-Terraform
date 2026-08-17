@@ -18,6 +18,16 @@ it is supplied as a variable or taken from the firewall module. It is the only
 thing that executes stage's firewall path anywhere. It does not prove Azure
 accepts the plan; it proves the configuration is internally coherent.
 
+What it does **not** check is that the next hop is an address inside this VNet.
+Until 2026-08-17 the test pinned `10.30.0.4` — prod's range — against stage's
+own `10.40.0.0/16`, with prod holding stage's address in the mirror image. The
+value is corrected, but nothing refuses the class: Azure accepts an out-of-VNet
+next hop because that is how a peered appliance is reached, so the route table
+plans, the assertion that a default route exists passes, and every workload
+packet leaves for an address that does not exist in this network. A
+precondition in the `route-table` module would close it, and would need the
+VNet address space passed in.
+
 ---
 
 ## The reason stage exists

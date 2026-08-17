@@ -179,8 +179,14 @@ What makes it a measurement rather than a smoke test is the third outcome:
 | Outcome | Means |
 |---|---|
 | `guarded` | The named run block failed. The assertion earns its place |
-| `guarded-elsewhere` | Something else failed first. The named claim is still untested |
+| `guarded-by-module` | A child module's precondition fired first, by declared expectation. The property holds; the assertion is not what holds it |
+| `guarded-elsewhere` | Something else failed first, unexpectedly. The named claim is still untested |
 | `UNGUARDED` | The suite passed with the configuration broken |
+
+**81 mutations: 70 `guarded`, 11 `guarded-by-module`, none unguarded.** The
+first pass was 62, 1 unguarded and 16 unaccounted for; the difference is three
+fixed defects, four mutations that were themselves wrong, and eleven now
+declared as module-guarded with the reason recorded next to each.
 
 A mutation that merely turns the suite red proves nothing. It may have broken
 the plan outright, or tripped a precondition inside a child module, or been
@@ -188,7 +194,15 @@ caught by an unrelated assertion three runs earlier — and an assertion that
 never fires for its own reason is an assertion whose claim is untested,
 whatever colour the suite is.
 
-### What `guarded-elsewhere` usually means here
+### What it found
+
+| Defect | Why nothing else caught it |
+|---|---|
+| `waf_posture` reported the profile's intention, not the mode wired into the gateway | Setting prod's WAF to Detection left the suite green while the output still read `Prevention: matching requests are BLOCKED` |
+| `stage` and `prod` had their firewall next-hop addresses transposed | Azure accepts an out-of-VNet next hop — it is how you reach an appliance across a peering — so the plan is clean and egress black-holes |
+| A bootstrap assertion pinned the same value its own input supplied | It could not tell a derived value from a hardcoded one |
+
+### What `guarded-by-module` and `guarded-elsewhere` mean here
 
 **`terraform test` stops a file at the first run that ERRORS**, as opposed to
 one that merely fails an assertion. So any mutation that makes the plan invalid
@@ -224,7 +238,7 @@ state.
 
 ### It is not part of `make check`
 
-A full campaign is 79 suite runs, around forty minutes wall-clock with the
+A full campaign is 81 suite runs, around twenty minutes wall-clock with the
 targets in parallel. What *is* in `make check`, through `make test-sh`, is
 `--check-catalogue`: it verifies every mutation still names a run block that
 exists. A renamed run block would otherwise make its mutation permanently

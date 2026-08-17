@@ -146,12 +146,11 @@ create a setting that would enable nothing, and that check is unreachable
 until apply.
 
 **Every configuration in the repository now has tests — 22 modules, 4
-environments and the bootstrap — and the module
-coverage was measured rather than asserted.** Every precondition in the
-repository was weakened to an always-true expression in turn, with the suite
-re-run each time, to check that some test actually fails when it stops
-guarding. **105 of 110 are confirmed that way. The other 5 cannot fire at
-all**, and each is written up in its own test file:
+environments and the bootstrap — and every one of them was measured rather than
+asserted.** Every precondition in the repository was weakened to an always-true
+expression in turn, with the suite re-run each time, to check that some test
+actually fails when it stops guarding. **105 of 110 are confirmed that way. The
+other 5 cannot fire at all**, and each is written up in its own test file:
 
 | Precondition | Why it can never fire |
 |---|---|
@@ -163,22 +162,50 @@ all**, and each is written up in its own test file:
 None is a missing test. Each is a guard made redundant by a stricter check
 earlier in the chain — worth keeping, worth not counting as coverage.
 
-The environment suites are not measured the same way, and cannot be. A
-composition root declares no resources, so it has no preconditions of its own
-to weaken — and `expect_failures` only accepts checkable objects in the root
-module under test, which means a failure raised inside a child module cannot be
-named from an environment test at all. Those failure modes are tested in the
-module that owns them; the environment tests assert the positive wiring.
+The environment and bootstrap suites are measured too, by a different
+mechanism. A composition root declares no resources, so it has no preconditions
+of its own to weaken; the mutation target is the **configuration** instead.
+`scripts/mutation-test.py` holds **81 mutations** — the data-plane rule names
+6380 again, the workload route table loses its default route, the profile is
+handed the wrong environment name — each naming the `run` block that claims to
+guard it. **70 are caught by that run block. The other 11 are caught first by a
+precondition inside a child module**, which is a real result rather than a
+pass: the property holds, but the environment assertion is not what holds it.
+None is unguarded.
+
+That distinction is the whole point. A mutation that merely turns the suite red
+proves nothing — it may have broken the plan outright, or been caught by an
+unrelated assertion three runs earlier — and an assertion that never fires for
+its own reason is untested whatever colour the suite is.
+
+Two limits shape what a mutation can measure here. `terraform test` halts a
+file at the first run that **errors**, as opposed to one that fails an
+assertion, so any mutation invalidating the plan is attributed to the first run
+block and no later one executes. And `expect_failures` only accepts checkable
+objects in the root module under test, so a failure raised inside a child
+module cannot be named from an environment test at all. Both push the same way:
+failure modes belong to the module that owns them, and the environment tests
+assert the positive wiring.
+
+Running it found three defects the suites had been green over:
+
+| Found | What was actually happening |
+|---|---|
+| A WAF assertion that tested nothing | `waf_posture` read the profile's *intention*, not the mode wired into the gateway. Set prod's WAF to Detection and the suite stayed green while the output still said `Prevention: matching requests are BLOCKED` |
+| Two environments' next hops, transposed | `stage` pinned `10.30.0.4` against its own `10.40.0.0/16`, and `prod` the mirror image. Azure accepts an out-of-VNet next hop — that is how you reach an appliance across a peering — so the plan is clean and every workload packet leaves for an address that does not exist in that network |
+| An assertion weaker than its message | bootstrap asserts its summary reports 30 days while its own input is 30, so it cannot tell a derived value from a hardcoded one |
 
 Writing the tests found five real defects, four of one kind: expressions
 relying on `&&` and `||` to short-circuit, which Terraform 1.9.8 does not do.
+Measuring them afterwards found three more, listed above — which is the
+argument for measuring.
 Most were invisible to `terraform validate`, which does not evaluate those
 paths, and to every environment plan, which needs credentials this repository
 does not have.
 
 | Document | Contents |
 |---|---|
-| [`scripts/README.md`](scripts/README.md) | Preflight, ingestion, cluster access and drift checks — each one exists because its absence caused a real failure |
+| [`scripts/README.md`](scripts/README.md) | Preflight, ingestion, cluster access, drift, conformance and mutation checks — each one exists because its absence caused a real failure |
 | [`LICENSE`](LICENSE) | MIT |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Conventions that are load-bearing rather than stylistic, and the failures behind them |
 | [`SECURITY.md`](SECURITY.md) | Security posture, and the weaknesses deliberately accepted |

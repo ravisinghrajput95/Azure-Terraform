@@ -36,6 +36,13 @@ It is also the only configuration here whose preconditions can be named in
 `expect_failures`, because it declares its resources rather than composing
 modules.
 
+Those ten runs were mutation-verified along with the environment suites —
+`./scripts/mutation-test.py --target bootstrap`, ten mutations, all caught by
+the run block that claims to guard them. One assertion was found weaker than
+its own error message and is annotated in place: it pins a 30-day soft-delete
+window while its own input supplies 30, so it cannot tell a derived value from
+a hardcoded one. What holds that property is the seven-day run below it.
+
 ---
 
 ## Adopted — imported and applied on 2026-08-14

@@ -15,6 +15,14 @@ than Detection, and no daily cap on the workspace. It also pins the peak
 footprint at 80 vCPU, which is the number that keeps this environment
 undeployable here. It does not prove Azure accepts the plan.
 
+"Wired rather than merely configured" was not true of the WAF assertion until
+2026-08-17. `waf_posture` read the profile's *intention* rather than the mode
+handed to the Application Gateway, so setting prod's gateway to Detection left
+this suite green while the output still reported `Prevention: matching requests
+are BLOCKED`. `scripts/mutation-test.py` found it by doing exactly that. The
+output now reads the gateway module, and the mutation that found it is in the
+catalogue so the assertion cannot quietly stop testing the wiring again.
+
 ---
 
 ## Why it is not deployed
