@@ -63,14 +63,27 @@ validate: ## terraform validate every module and environment
 	done; \
 	exit $$failed
 
+# Environments are included, not just modules. Their tests are the only
+# verification qa, stage and prod can be given at all — none of the three can be
+# applied on this subscription, so a mocked plan is the whole of it.
+#
+# TF_DATA_DIR for the same reason validate needs it: `terraform init
+# -backend=false` still READS the backend recorded in an existing .terraform, so
+# in an environment directory where a real init has been run it tries to reach
+# the state account and fails before any test runs. A separate data directory
+# also means this target can never disturb the one `make plan` depends on.
+#
+# Every test file mocks the provider, so nothing here authenticates to Azure,
+# reads state, or creates a resource.
 .PHONY: test
-test: ## Run terraform test for every module that has tests
-	@set -euo pipefail; \
+test: ## Run terraform test for every module and environment that has tests
+	@set -uo pipefail; \
 	failed=0; \
-	for dir in terraform/modules/*/; do \
+	for dir in terraform/modules/*/ terraform/environments/*/; do \
 	  [ -d "$${dir}tests" ] || continue; \
 	  echo "==> $$dir"; \
-	  ( cd $$dir && terraform init -backend=false -input=false >/dev/null && terraform test ) || failed=1; \
+	  ( cd $$dir && export TF_DATA_DIR=$(TF_VALIDATE_DIR) && \
+	    terraform init -backend=false -input=false >/dev/null && terraform test ) || failed=1; \
 	done; \
 	exit $$failed
 

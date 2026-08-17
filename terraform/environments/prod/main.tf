@@ -8,7 +8,7 @@
 #
 # The environment name is a local, not a variable. A root module IS its
 # environment; making it configurable would allow `terraform apply -var
-# environment=prod` against the qa state file.
+# environment=dev` against the prod state file.
 #
 # ---------------------------------------------------------------------------
 # THIS ENVIRONMENT CANNOT BE APPLIED ON THE CURRENT SUBSCRIPTION, AND NOTHING

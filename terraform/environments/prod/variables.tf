@@ -74,8 +74,14 @@ variable "subscription_vcpu_quota" {
 
     On this subscription the limit is 4 for the whole region and cannot be
     raised without upgrading to Pay-As-You-Go — and dev already consumes 2 of
-    them. qa's profile needs at least 6 (a two-node system pool plus one user
-    node), so this environment CANNOT be applied here. See README.md.
+    them. prod's peak footprint is 80 (twenty Standard_D4s_v5 at the autoscale
+    ceiling), so this environment CANNOT be applied here. See README.md.
+
+    The default below is this subscription's real quota rather than prod's
+    requirement, which means the default does not plan — deliberately, so the
+    refusal is the first thing an apply reports. tests/prod.tftest.hcl passes
+    80 to exercise the composition, and asserts the 80 separately so this note
+    cannot quietly go stale.
   EOT
   type        = number
   default     = 4

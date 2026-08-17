@@ -108,15 +108,28 @@ make check              # fmt-check, validate, test, lint
 make plan ENV=dev       # needs credentials
 ```
 
-**288 tests** run with `mock_provider` — no credentials, nothing created. They
-test the preconditions, not the provider: a test asserting that
+**330 tests** run with `mock_provider` — no credentials, no backend, nothing
+created. They test the preconditions, not the provider: a test asserting that
 `azurerm_storage_account` sets a name is testing HashiCorp's code.
 
-**All 22 built modules are covered, and the coverage was measured rather than
-asserted.** Every precondition in the repository was weakened to an always-true
-expression in turn, with the suite re-run each time, to check that some test
-actually fails when it stops guarding. **105 of 110 are confirmed that way. The
-other 5 cannot fire at all**, and each is written up in its own test file:
+They split into two jobs. **288 module tests** check each module against its
+own contract. **42 environment tests** check the composition — that a name
+derived in one place reaches every consumer, that a subnet which must not carry
+a default route does not, that the profile's decision reaches the resource it
+governs. That layer is invisible to a module test, and for `qa`, `stage` and
+`prod` it is the only verification available at all: none of the three can be
+applied on this subscription, so a mocked plan is the whole of it. `stage`'s
+suite is the only thing that executes the Azure Firewall egress path anywhere.
+
+What they do not prove is that Azure accepts the plan. A mocked plan shows the
+configuration is internally coherent, not that the API agrees.
+
+**All 22 built modules and all 4 environments are covered, and the module
+coverage was measured rather than asserted.** Every precondition in the
+repository was weakened to an always-true expression in turn, with the suite
+re-run each time, to check that some test actually fails when it stops
+guarding. **105 of 110 are confirmed that way. The other 5 cannot fire at
+all**, and each is written up in its own test file:
 
 | Precondition | Why it can never fire |
 |---|---|
@@ -127,6 +140,13 @@ other 5 cannot fire at all**, and each is written up in its own test file:
 
 None is a missing test. Each is a guard made redundant by a stricter check
 earlier in the chain — worth keeping, worth not counting as coverage.
+
+The environment suites are not measured the same way, and cannot be. A
+composition root declares no resources, so it has no preconditions of its own
+to weaken — and `expect_failures` only accepts checkable objects in the root
+module under test, which means a failure raised inside a child module cannot be
+named from an environment test at all. Those failure modes are tested in the
+module that owns them; the environment tests assert the positive wiring.
 
 Writing the tests found five real defects, four of one kind: expressions
 relying on `&&` and `||` to short-circuit, which Terraform 1.9.8 does not do.

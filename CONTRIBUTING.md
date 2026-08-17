@@ -151,8 +151,36 @@ run "rejects_the_thing_that_fails_silently" {
 }
 ```
 
-CI discovers `terraform/modules/*/tests/` automatically. Adding a directory is
-all that is needed; no workflow change.
+CI discovers `terraform/modules/*/tests/` and `terraform/environments/*/tests/`
+automatically. Adding a directory is all that is needed; no workflow change.
+
+### Environment tests are a different job from module tests
+
+A module test proves a module honours its contract. An environment test proves
+the composition wires those modules to each other correctly — that a name
+derived in one place reaches every consumer, that a subnet which must not carry
+a default route does not, that the profile's decision reaches the resource it
+governs. Assert on what this repository decides: names, keys, counts, and
+resolved profile values. Do not assert on provider-computed values — IDs, URIs,
+IPs, FQDNs are random mock strings under `mock_provider`.
+
+Two things bite when writing one:
+
+**Pin every variable in the test file.** `terraform test` reads
+`terraform.tfvars` like any other command, and that file is gitignored. A test
+that leaves a variable to be filled in from it passes on your machine and fails
+in CI. The first draft of `dev`'s suite asserted a `cus` name prefix while
+`var.location` defaults to `eastus`, and passed only because the local tfvars
+said `centralus`.
+
+**`expect_failures` cannot name anything inside a child module.** It only
+accepts checkable objects in the root module under test, and a composition root
+declares no resources of its own — so the failures that matter most there
+(a route to a null next hop, a footprint over quota, a cluster nobody can
+authenticate to) cannot be expressed. Terraform reports ``Invalid
+`expect_failures` reference`` or `Missing expected failure`. Test those in the
+module that owns the precondition, and assert the positive wiring in the
+environment.
 
 ---
 

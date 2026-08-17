@@ -7,6 +7,17 @@ Everything below is a claim about a plan. Nothing here has run, and `stage`
 carries a second layer of that: the `firewall` module its egress depends on has
 never been applied either, anywhere.
 
+`tests/stage.tftest.hcl` is what makes those claims checkable. It plans this
+composition under `mock_provider` — no credentials, no backend, nothing created
+— and asserts the things stage exists to get right: that egress resolves to the
+firewall, that the workload route table actually carries the `0.0.0.0/0` route
+(without it the firewall is billed in full and inspects nothing), that
+`AzureFirewallSubnet`, `AzureBastionSubnet` and the Application Gateway subnet
+are never associated with a route table, and that the next hop resolves whether
+it is supplied as a variable or taken from the firewall module. It is the only
+thing that executes stage's firewall path anywhere. It does not prove Azure
+accepts the plan; it proves the configuration is internally coherent.
+
 ---
 
 ## The reason stage exists

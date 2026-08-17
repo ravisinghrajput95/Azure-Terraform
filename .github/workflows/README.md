@@ -96,9 +96,17 @@ are identifiers, not secrets — a client ID is public information under OIDC.
 and gives the fastest signal. Validates every module and environment
 independently.
 
-**`test`** — `terraform test` against the `naming`, `tags` and `profile`
-modules. They are pure computation with no provider, so these run with no cloud
-access at all.
+**`test`** — `terraform test` against every module and every environment that
+has a `tests/` directory. Each test file declares `mock_provider`, so the whole
+job runs with no credentials, no backend and no resource created; it needs no
+Azure secrets and works on forks.
+
+The environment suites are the ones worth knowing about. Module tests check a
+module against its own contract; the environment suites check the wiring
+between modules — that the value one emits is the value the next needs, and
+that the profile's decisions reach the resources they govern. For qa, stage and
+prod that is the only verification there is, since none of the three can be
+applied on the current subscription.
 
 **`tflint`** — catches what `validate` cannot. `validate` checks syntax and
 types against the provider schema; it does not know that a VM size might not

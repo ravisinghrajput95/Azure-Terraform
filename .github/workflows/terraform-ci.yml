@@ -103,13 +103,20 @@ jobs:
           exit $failed
 
   ##############################################################################
-  # Unit tests
+  # Unit and composition tests
   #
-  # The naming, tags and profile modules are pure computation with no provider,
-  # so `terraform test` runs with no cloud access whatsoever.
+  # Every test file mocks the provider, so `terraform test` runs with no cloud
+  # access whatsoever — no credentials, no backend, no resource created. This
+  # job therefore needs no Azure secrets and runs on forks.
+  #
+  # Environments are included as well as modules. The module tests check each
+  # module against its own contract; the environment tests check the wiring
+  # between them, which is the layer no module test can see. For qa, stage and
+  # prod that is the only verification available at all — none of the three can
+  # be applied on this subscription.
   ##############################################################################
   test:
-    name: Module unit tests
+    name: Module and environment tests
     runs-on: ubuntu-latest
     needs: validate
     steps:
@@ -124,7 +131,7 @@ jobs:
         run: |
           set -euo pipefail
           failed=0
-          for dir in terraform/modules/*/; do
+          for dir in terraform/modules/*/ terraform/environments/*/; do
             [ -d "${dir}tests" ] || continue
             echo "::group::test ${dir}"
             if ! (cd "$dir" && terraform init -backend=false -input=false >/dev/null && terraform test); then

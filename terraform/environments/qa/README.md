@@ -8,6 +8,15 @@ without having been applied, so the distinction matters more than usual: every
 claim below about *behaviour* is a claim about a plan, not about a running
 system. Nothing here has been verified against a live resource.
 
+`tests/qa.tftest.hcl` is what makes the plan itself checkable. It runs under
+`mock_provider` — no credentials, no backend, nothing created — and asserts
+what qa adds over dev: Application Gateway ingress rather than a public load
+balancer, its subnet never carrying a default route (AppGW v2 reports
+permanently unhealthy behind one, with nothing at plan time to suggest why),
+the HTTP-only degraded mode when no certificate is supplied and the HTTPS
+listener when one is, and an uncapped workspace. It does not prove Azure
+accepts the plan; it proves the composition is internally coherent.
+
 ---
 
 ## Why it is not deployed

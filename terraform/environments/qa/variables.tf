@@ -74,8 +74,19 @@ variable "subscription_vcpu_quota" {
 
     On this subscription the limit is 4 for the whole region and cannot be
     raised without upgrading to Pay-As-You-Go — and dev already consumes 2 of
-    them. qa's profile needs at least 6 (a two-node system pool plus one user
-    node), so this environment CANNOT be applied here. See README.md.
+    them, so this environment CANNOT be applied here. See README.md.
+
+    The number that has to fit is 8, not the 6 this note claimed until the
+    composition test measured it. Six is the steady-state node count — a
+    two-node system pool plus one user node — but the profile asserts against
+    the PEAK footprint, which is four Standard_D2s_v5 at the autoscale ceiling.
+    A quota of 6 would still be refused.
+
+    The default below is this subscription's real quota rather than qa's
+    requirement, which means the default does not plan — deliberately, so the
+    refusal is the first thing an apply reports. tests/qa.tftest.hcl passes 8
+    to exercise the composition, and asserts the 8 separately so this note
+    cannot quietly go stale.
   EOT
   type        = number
   default     = 4

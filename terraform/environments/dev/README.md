@@ -15,6 +15,14 @@ deployed, and the only one deployable on the current subscription.
 > applied but never measured — the workspace was still `OverQuota` from before
 > the fix when the environment was destroyed.
 
+`tests/dev.tftest.hcl` covers what survives a destroy. It plans this
+composition under `mock_provider` — no credentials, no backend, nothing created
+— and asserts the wiring the module tests cannot see: that the derived subnet
+name reaches the network, the NSG and the route table alike (those were three
+separate literals until 2026-08-15, one of them naming the wrong region), that
+no route table carries a default route while egress is by NAT Gateway, and that
+`AzureBastionSubnet` is the only subnet without an egress path.
+
 ---
 
 ## Subscription constraints

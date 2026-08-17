@@ -6,6 +6,15 @@ appropriate to apply on this subscription even if it fitted.**
 Every claim here is a claim about a plan. Nothing in this environment has run,
 and neither has the `firewall` module it depends on.
 
+`tests/prod.tftest.hcl` is therefore the whole of prod's verification. It plans
+this composition under `mock_provider` — no credentials, no backend, nothing
+created — and asserts that the controls prod exists to carry are actually
+wired rather than merely configured: management locks present, egress forced
+through the firewall by a real `0.0.0.0/0` route, the WAF in Prevention rather
+than Detection, and no daily cap on the workspace. It also pins the peak
+footprint at 80 vCPU, which is the number that keeps this environment
+undeployable here. It does not prove Azure accepts the plan.
+
 ---
 
 ## Why it is not deployed
