@@ -17,17 +17,21 @@
 
 name: Terraform CI
 
-# scripts/** and .shellcheckrc are in these filters deliberately. Without them
-# the shellcheck job below exists and never runs: a pull request touching only
-# scripts/ would not start this workflow at all, and the branch would go green
-# on a check that was never executed. That is a worse failure than having no
-# check, because the tick mark is still there.
+# scripts/**, .shellcheckrc and .tflint.hcl are in these filters deliberately.
+# Without them the job that reads each one exists and never runs: a pull
+# request touching only scripts/ would not start this workflow at all, and the
+# branch would go green on a check that was never executed. That is a worse
+# failure than having no check, because the tick mark is still there.
+#
+# .tflint.hcl was added after a commit changing the entire lint policy started
+# no run at all — the same hole, one file along.
 on:
   pull_request:
     paths:
       - "terraform/**"
       - "scripts/**"
       - ".shellcheckrc"
+      - ".tflint.hcl"
       - ".github/workflows/terraform-ci.yml"
   push:
     branches: [main]
@@ -35,6 +39,7 @@ on:
       - "terraform/**"
       - "scripts/**"
       - ".shellcheckrc"
+      - ".tflint.hcl"
       - ".github/workflows/terraform-ci.yml"
   workflow_dispatch:
 
