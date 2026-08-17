@@ -356,10 +356,14 @@ module "route_table" {
 # its PUBLIC address from inside the VNet. The endpoint exists, the NSG permits
 # it, the diagram is correct — and traffic leaves the network.
 #
-# qa carries one zone dev does not: the AKS API server. A private cluster
-# publishes its API server into privatelink.<region>.azmk8s.io, and without
-# that zone linked to the VNet, kubectl from inside the network cannot resolve
-# the cluster it is sitting next to.
+# The AKS API server zone is NOT declared here, and that is deliberate. A
+# private cluster publishes its API server into privatelink.<region>.azmk8s.io,
+# but the aks module leaves private_dns_zone_id unset, so the value defaults to
+# "System" and AKS creates and links that zone itself in the node resource
+# group. Declaring it here as well would be a second owner for one zone.
+#
+# This environment's cluster is PRIVATE, so the zone exists — just not as
+# something this module manages. The four services below are the DATA planes.
 ################################################################################
 
 module "private_dns" {

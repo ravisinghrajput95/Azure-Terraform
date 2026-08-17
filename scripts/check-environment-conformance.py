@@ -64,6 +64,34 @@ EXPECTED_VARIABLE_DIFFERENCES = {
 }
 
 
+# Resource types legitimately mocked in some environments and not others, with
+# the reason. Anything outside this map is reported, because mock_resource
+# defaults are per type and a forgotten one is invisible until the provider
+# refuses to parse a random string.
+EXPECTED_MOCK_DIFFERENCES = {
+    "azurerm_firewall": {
+        "envs": {"stage", "prod"},
+        "why": "only stage and prod egress through an Azure Firewall",
+    },
+    "azurerm_firewall_policy": {
+        "envs": {"stage", "prod"},
+        "why": "the policy exists only where the firewall does",
+    },
+    "azurerm_application_gateway": {
+        "envs": {"qa", "stage", "prod"},
+        "why": "dev fronts the tier with a public load balancer",
+    },
+    "azurerm_web_application_firewall_policy": {
+        "envs": {"qa", "stage", "prod"},
+        "why": "the WAF policy exists only where the Application Gateway does",
+    },
+    "azurerm_nat_gateway": {
+        "envs": {"dev", "qa"},
+        "why": "stage and prod egress through the firewall instead",
+    },
+}
+
+
 def read_descriptions(path):
     """Yield (line_number, text, opted_out) for every description in a file.
 
@@ -178,6 +206,94 @@ def check_variable_parity(problems, declared):
             )
 
 
+# An ARM resource ID, as the azurerm provider parses it CLIENT-SIDE before any
+# API call: a subscription GUID, a resource group, and then EITHER nothing — a
+# resource group ID is a scope in its own right, which is what role assignments
+# and alert rules are attached to — or a provider namespace followed by one or
+# more type/name pairs.
+#
+# The resource-group form is not a special case to be tolerated. Requiring
+# /providers here reported all four environments' rg-mock as malformed on the
+# first run, which is the checker being wrong about a shape the test files
+# already document as deliberate.
+ARM_ID = re.compile(
+    r"^/subscriptions/[0-9a-fA-F-]{36}"
+    r"/resourceGroups/[^/]+"
+    r"(?:/providers/[A-Za-z][A-Za-z0-9.]*(?:/[^/]+/[^/]+)+)?$"
+)
+
+MOCK_RESOURCE = re.compile(r'mock_resource\s+"([a-z0-9_]+)"')
+MOCK_ID = re.compile(r'\bid\s*=\s*"(/subscriptions/[^"]*)"')
+
+
+def check_mock_scaffolding(problems):
+    """Check the mock IDs in the environment test files.
+
+    This is the least durable thing in the suites and the one whose failure is
+    least legible. The azurerm provider parses IDs client-side, so a mock that is
+    not shaped like a real ID fails with "the number of segments didn't match" —
+    an error that names neither the file, the resource type, nor the mock, and
+    reads as a bug in the configuration under test.
+
+    Two things are checked, both of which turn that into a named, one-second
+    failure:
+
+      1. Every mock id that looks like an ARM ID actually is one. A typo in a
+         scaffolding ID currently surfaces as a parse error against whichever
+         resource happened to consume it.
+
+      2. The four environments mock the same resource TYPES. mock_resource
+         defaults are per type, so a type mocked in three environments and
+         forgotten in the fourth leaves that one receiving Terraform's random
+         8-character strings — which is exactly the input the provider cannot
+         parse, in the environment nobody was looking at.
+
+    What this cannot do is predict the provider's parser. If a provider upgrade
+    tightens what it accepts, these mocks may still break — but the READMEs say
+    so, and the mutation catalogue names the scaffolding, so the failure has
+    somewhere to point.
+    """
+    by_env = {}
+
+    for env in ENVIRONMENTS:
+        test_dir = ENV_ROOT / env / "tests"
+        types = set()
+
+        for path in sorted(test_dir.glob("*.tftest.hcl")):
+            text = path.read_text()
+            types.update(MOCK_RESOURCE.findall(text))
+
+            for line_no, line in enumerate(text.splitlines(), start=1):
+                for ident in MOCK_ID.findall(line):
+                    if not ARM_ID.match(ident):
+                        problems.append(
+                            f"{path.relative_to(ENV_ROOT.parent.parent)}:{line_no}: "
+                            f"mock id is not a well-formed ARM resource ID: {ident}. "
+                            f"The azurerm provider parses IDs before any API call, "
+                            f"so this fails as \"the number of segments didn't "
+                            f"match\" against whichever resource consumes it."
+                        )
+
+        by_env[env] = types
+
+    everywhere = set.intersection(*(by_env[e] for e in ENVIRONMENTS))
+    anywhere = set.union(*(by_env[e] for e in ENVIRONMENTS))
+
+    for resource_type in sorted(anywhere - everywhere):
+        present = sorted(e for e in ENVIRONMENTS if resource_type in by_env[e])
+        absent = sorted(set(ENVIRONMENTS) - set(present))
+        expected = EXPECTED_MOCK_DIFFERENCES.get(resource_type)
+        if expected and set(expected["envs"]) == set(present):
+            continue
+        problems.append(
+            f"mock_resource \"{resource_type}\": mocked in {', '.join(present)} "
+            f"but not {', '.join(absent)}. mock_resource defaults are per TYPE, so "
+            f"the environments without it receive random strings where a parseable "
+            f"ID is needed. If the difference is deliberate, record it in "
+            f"EXPECTED_MOCK_DIFFERENCES in this script."
+        )
+
+
 def main():
     missing = [e for e in ENVIRONMENTS if not (ENV_ROOT / e).is_dir()]
     if missing:
@@ -190,6 +306,7 @@ def main():
     check_cross_environment_names(problems)
     check_shared_defaults(problems, declared)
     check_variable_parity(problems, declared)
+    check_mock_scaffolding(problems)
 
     if problems:
         print(f"Environment conformance: {len(problems)} problem(s)\n")
@@ -199,7 +316,7 @@ def main():
 
     print(
         f"Environment conformance: {', '.join(ENVIRONMENTS)} agree "
-        f"(descriptions, shared defaults, variable sets)."
+        f"(descriptions, shared defaults, variable sets, mock scaffolding)."
     )
     return 0
 

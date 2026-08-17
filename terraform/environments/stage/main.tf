@@ -104,8 +104,9 @@ locals {
 # One group per lifecycle scope: net, sec, data, app, mon. See
 # docs/ARCHITECTURE.md section 1.2 for why these are separated.
 #
-# Locks follow the profile and are off in qa, so `terraform destroy` works —
-# the primary cost control on a credit-limited subscription.
+# Locks follow the profile and are off in stage, so `terraform destroy` works —
+# the primary cost control on a credit-limited subscription. prod is the only
+# environment that turns them on.
 ################################################################################
 
 module "resource_group" {
@@ -155,13 +156,14 @@ module "diagnostics_log_analytics" {
 ################################################################################
 # Phase 2 — network
 #
-# Address plan per docs/NETWORKING.md. qa occupies 10.40.0.0/16, spaced from
-# dev's 10.10.0.0/16 and prod's 10.30.0.0/16 so a future peering cannot
-# collide.
+# Address plan per docs/NETWORKING.md. stage occupies 10.40.0.0/16, spaced from
+# dev's 10.10.0.0/16, qa's 10.20.0.0/16 and prod's 10.30.0.0/16 so a future
+# peering cannot collide.
 #
-# Unlike dev, qa ALLOCATES snet-agw — the Application Gateway is deployed here
-# — and allocates AzureBastionSubnet, because qa runs Bastion Basic, which
-# takes a subnet and a public IP where dev's Developer SKU attaches by VNet ID.
+# Unlike dev, stage ALLOCATES snet-agw — the Application Gateway is deployed
+# here — and allocates AzureBastionSubnet, because stage runs Bastion Standard,
+# which takes a subnet and a public IP where dev's Developer SKU attaches by
+# VNet ID.
 #
 # Still reserved and not allocated: AzureFirewallManagementSubnet
 # 10.40.0.64/26 -- needed only for the Basic tier or forced tunnelling, and
@@ -486,10 +488,14 @@ module "route_table" {
 # its PUBLIC address from inside the VNet. The endpoint exists, the NSG permits
 # it, the diagram is correct — and traffic leaves the network.
 #
-# qa carries one zone dev does not: the AKS API server. A private cluster
-# publishes its API server into privatelink.<region>.azmk8s.io, and without
-# that zone linked to the VNet, kubectl from inside the network cannot resolve
-# the cluster it is sitting next to.
+# The AKS API server zone is NOT declared here, and that is deliberate. A
+# private cluster publishes its API server into privatelink.<region>.azmk8s.io,
+# but the aks module leaves private_dns_zone_id unset, so the value defaults to
+# "System" and AKS creates and links that zone itself in the node resource
+# group. Declaring it here as well would be a second owner for one zone.
+#
+# This environment's cluster is PRIVATE, so the zone exists — just not as
+# something this module manages. The four services below are the DATA planes.
 ################################################################################
 
 module "private_dns" {
@@ -510,13 +516,15 @@ module "private_dns" {
 ################################################################################
 # Phase 2 — Azure Bastion
 #
-# qa runs Bastion BASIC, not dev's Developer SKU. Basic is a dedicated instance
-# in AzureBastionSubnet with its own public IP, and it supports native client
-# tunneling and file copy — which is what makes it usable as the entry point
-# to a PRIVATE AKS cluster, where kubectl has to run from inside the VNet.
+# stage runs Bastion STANDARD, where qa runs Basic and dev runs Developer. A
+# dedicated instance in AzureBastionSubnet with its own public IP, supporting
+# native client tunneling and file copy — which is what makes it usable as the
+# entry point to a PRIVATE AKS cluster, where kubectl has to run from inside
+# the VNet.
 #
-# It also costs roughly $140/month, where Developer is free. That is a real
-# line item and part of why this environment is not deployed.
+# It is a paid tier, and dearer than qa's Basic, where dev's Developer SKU is
+# free. That is a real line item and part of why this environment is not
+# deployed.
 ################################################################################
 
 module "bastion" {
@@ -568,8 +576,8 @@ module "managed_identity" {
 # RBAC authorization only. The legacy access policy model is not used anywhere
 # in this platform.
 #
-# qa differs from dev in one important way: data_plane_public_access_enabled is
-# FALSE. The vault is reachable only through its private endpoint.
+# stage differs from dev in one important way: data_plane_public_access_enabled
+# is FALSE. The vault is reachable only through its private endpoint.
 #
 # That is the correct posture and it has an operational consequence worth
 # stating plainly rather than discovering: Terraform running on a laptop
@@ -579,8 +587,9 @@ module "managed_identity" {
 # the vault itself and its role assignments, still work from anywhere.
 #
 # Purge protection is OFF, as in dev: the naming module produces a
-# deterministic vault name, so protection would block rebuilding qa for the
-# full retention period after a teardown.
+# deterministic vault name, so protection would block rebuilding stage for the
+# full retention period after a teardown. prod is the environment that accepts
+# that trade and turns protection on.
 ################################################################################
 
 data "azurerm_client_config" "current" {}
@@ -642,7 +651,7 @@ module "diagnostics_key_vault" {
 ################################################################################
 # Phase 3 — Storage
 #
-# Private endpoint only in qa, per the profile.
+# Private endpoint only in stage, per the profile.
 #
 # shared_access_key_enabled = false. Storage account keys are the most
 # frequently leaked Azure credential — static, never expiring, impossible to
@@ -724,7 +733,8 @@ module "diagnostics_storage" {
 # generated, so none is written to Terraform state in plaintext, none is stored
 # in Key Vault, none is rotated, and none can leak.
 #
-# qa uses GP_Gen5_2 — provisioned rather than dev's serverless GP_S_Gen5_1.
+# stage uses BC_Gen5_2 — Business Critical, where qa runs the provisioned
+# General Purpose GP_Gen5_2 and dev the serverless GP_S_Gen5_1.
 # Serverless pauses after idle and pays a cold start of several seconds on the
 # next connection, which is fine for development and actively misleading in a
 # test environment: it turns a performance test into a measurement of whether
@@ -782,10 +792,10 @@ module "diagnostics_sql" {
 # Azure Cache for Redis is RETIRING — its API rejects creation outright — so
 # this uses Azure Managed Redis (Microsoft.Cache/redisEnterprise).
 #
-# qa enables high availability, which dev cannot afford. That is the difference
-# that makes qa able to answer a question dev cannot: what the application does
-# when the cache fails over. A single-node cache never fails over; it simply
-# disappears, so dev can only prove the wiring.
+# stage enables high availability, as qa does and dev cannot afford. That is
+# the difference that makes either able to answer a question dev cannot: what
+# the application does when the cache fails over. A single-node cache never
+# fails over; it simply disappears, so dev can only prove the wiring.
 #
 # Access keys are disabled. Redis keys have the same weaknesses as storage
 # account keys — static, non-expiring, unscopable, total control.
@@ -967,8 +977,8 @@ module "diagnostics_aks" {
 # trusting the WAF. Detection logs what Prevention would have blocked, which is
 # the input to tuning it.
 #
-# Zones are empty in qa — zone redundancy is free on AppGW v2 but the profile
-# reserves it for prod, where an availability claim is being made.
+# stage's compute spans zones 1, 2 and 3, as prod's does — an availability
+# claim this environment exists to exercise before prod relies on it.
 #
 # TLS: the certificate is an input, not a resource, because a root module
 # declares none. With no certificate supplied the gateway comes up HTTP-only
