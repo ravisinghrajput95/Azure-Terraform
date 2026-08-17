@@ -133,6 +133,13 @@ run "state_protections_are_reported_accurately" {
     error_message = "Shared key access must be off. A shared key is static, non-expiring, unscopable and grants total control of every state file in the account."
   }
 
+  # This pins the reported window at the value this run supplies — and 30 is
+  # also what the variables block above supplies, so it cannot tell a derived
+  # number from a hardcoded one. Replacing the interpolation in outputs.tf with
+  # a literal 30 leaves this assertion green; the mutation campaign found that.
+  # What actually holds the derivation is
+  # `a_soft_delete_window_of_exactly_a_week_is_allowed` below, which supplies a
+  # different number and asserts the summary followed it.
   assert {
     condition     = strcontains(output.state_protection_summary, "Blob soft delete retains deletions for 30 days.")
     error_message = "The summary must report the configured soft-delete window."

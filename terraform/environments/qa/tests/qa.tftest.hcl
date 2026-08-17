@@ -289,6 +289,19 @@ run "ingress_reports_its_own_tls_posture" {
     condition     = startswith(output.ingress_is_encrypted, "HTTP ONLY")
     error_message = "With no certificate secret ID, ingress must report itself as HTTP-only rather than appearing complete."
   }
+
+  # qa is where WAF rules are tuned, so Detection is the deliberate posture
+  # here rather than a degraded one — and it is the contrast that makes prod's
+  # Prevention meaningful.
+  #
+  # This asserts on the mode wired INTO the gateway, not on the profile's
+  # intention. The output read the profile until a mutation set the gateway to
+  # Detection and the suite stayed green while the posture still claimed
+  # Prevention; see the note above the waf_posture output.
+  assert {
+    condition     = startswith(output.waf_posture, "Detection")
+    error_message = "qa's WAF must be in Detection while its rules are being tuned. Prevention against an untuned rule set blocks legitimate traffic, which is how a WAF ends up disabled entirely."
+  }
 }
 
 run "a_certificate_turns_on_the_https_listener" {

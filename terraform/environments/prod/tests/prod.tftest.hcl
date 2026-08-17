@@ -173,7 +173,13 @@ variables {
   subscription_vcpu_quota = 80
   profile_overrides       = {}
 
-  firewall_private_ip = "10.40.0.4"
+  # Inside prod's own AzureFirewallSubnet, 10.30.0.0/26. It said 10.40.0.4 —
+  # stage's range — until the mutation campaign put the two files side by side:
+  # prod held stage's address and stage held prod's, exactly transposed. Azure
+  # accepts an out-of-VNet next hop, because that is how you reach an appliance
+  # across a peering, so nothing would have refused it and workload egress
+  # would have black-holed against an address that does not exist here.
+  firewall_private_ip = "10.30.0.4"
 
   deployer_ip_addresses = []
 

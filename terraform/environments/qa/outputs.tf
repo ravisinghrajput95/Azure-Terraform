@@ -361,10 +361,16 @@ output "ingress_is_encrypted" {
   )
 }
 
+# Read from the gateway module, NOT from module.profile.profile.waf_mode. The
+# profile records what this environment INTENDED; the module holds what the WAF
+# policy was actually given. Those are the same value only while the wiring
+# between them is correct, which is the one thing an output like this exists to
+# report — and it read the profile until the mutation campaign set the gateway
+# to Detection and watched the suite stay green while this still said BLOCKED.
 output "waf_posture" {
-  description = "WAF mode in plain language. Detection LOGS what Prevention would have blocked and blocks nothing, which is the right starting point for an untuned rule set and the wrong place to stop."
+  description = "WAF mode in plain language, as wired into the gateway. Detection LOGS what Prevention would have blocked and blocks nothing, which is the right starting point for an untuned rule set and the wrong place to stop."
   value = !module.profile.enable_application_gateway ? "no WAF" : (
-    module.profile.profile.waf_mode == "Prevention"
+    one(module.application_gateway[*].waf_mode) == "Prevention"
     ? "Prevention: matching requests are BLOCKED."
     : "Detection: matching requests are LOGGED and ALLOWED THROUGH. The WAF is observing, not enforcing."
   )

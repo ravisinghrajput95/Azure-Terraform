@@ -178,7 +178,13 @@ variables {
   # than read from the firewall module so route tables can be applied before,
   # or independently of, the firewall itself. A separate run below covers
   # leaving it null and letting the module supply it.
-  firewall_private_ip = "10.30.0.4"
+  # Inside stage's own AzureFirewallSubnet, 10.40.0.0/26. It said 10.30.0.4 —
+  # prod's range — until the mutation campaign put the two files side by side:
+  # stage held prod's address and prod held stage's, exactly transposed. Azure
+  # accepts an out-of-VNet next hop, because that is how you reach an appliance
+  # across a peering, so nothing would have refused it and workload egress
+  # would have black-holed against an address that does not exist here.
+  firewall_private_ip = "10.40.0.4"
 
   deployer_ip_addresses = []
 
@@ -294,6 +300,16 @@ run "ingress_is_the_application_gateway" {
   assert {
     condition     = startswith(output.ingress_is_encrypted, "HTTP ONLY")
     error_message = "With no certificate secret ID, ingress must report itself as HTTP-only rather than appearing complete."
+  }
+
+  # stage matches prod's WAF posture rather than qa's: rules are tuned in qa,
+  # and stage is where the enforcing configuration is exercised before prod.
+  #
+  # Asserted on the mode wired INTO the gateway, not on the profile's
+  # intention — see the note above the waf_posture output.
+  assert {
+    condition     = output.waf_posture == "Prevention: matching requests are BLOCKED."
+    error_message = "stage's WAF must be enforcing, matching prod. Detection logs what Prevention would have blocked and blocks nothing, and the portal shows a WAF either way."
   }
 }
 
