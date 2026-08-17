@@ -108,11 +108,11 @@ make check              # fmt-check, validate, test, test-sh, lint, conformance
 make plan ENV=dev       # needs credentials
 ```
 
-**360 tests** run with `mock_provider` — no credentials, no backend, nothing
+**361 tests** run with `mock_provider` — no credentials, no backend, nothing
 created. They test the preconditions, not the provider: a test asserting that
 `azurerm_storage_account` sets a name is testing HashiCorp's code.
 
-**289 module tests** check each module against its own contract. **10 bootstrap
+**290 module tests** check each module against its own contract. **10 bootstrap
 tests** cover Phase 0, the state backend — the one configuration that is
 actually deployed and the only one on local state, where a mistake is not
 recoverable by reading state back, because the account is what holds the state.

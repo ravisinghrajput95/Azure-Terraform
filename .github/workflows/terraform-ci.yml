@@ -166,9 +166,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned, like ShellCheck and terraform-docs, and for the reason
+      # .tflint.hcl gives for pinning providers: an unpinned linter means a
+      # build that passed yesterday can fail today for reasons nobody changed.
+      # It also keeps CI in step with what `make lint` runs locally — the two
+      # having silently differed is what let the missing --config below go
+      # unnoticed.
       - uses: terraform-linters/setup-tflint@v4
         with:
-          tflint_version: latest
+          tflint_version: v0.64.0
 
       - name: Cache TFLint plugins
         uses: actions/cache@v4
@@ -178,14 +184,28 @@ jobs:
 
       - run: tflint --init
 
+      # --config is not optional, and its absence is invisible.
+      #
+      # `tflint --chdir=<dir>` looks for .tflint.hcl INSIDE that directory. No
+      # module has one, so without an explicit path tflint ran with its default
+      # configuration: the bundled terraform rules only, and no azurerm ruleset
+      # at all. The job passed, in about 0.08s per directory, while not
+      # performing the check this repository documents as its reason for
+      # existing — an invalid VM size went unreported here for as long as the
+      # job has been green.
+      #
+      # Verified by planting `size = "Standard_NOT_A_REAL_SIZE"` in a scratch
+      # module: unreported without --config, reported with it. The absolute
+      # path is required because --chdir has already moved.
       - name: Lint every module and environment
         run: |
           set -euo pipefail
+          config="$(pwd)/.tflint.hcl"
           failed=0
           for dir in terraform/modules/*/ terraform/environments/*/; do
             [ -n "$(find "$dir" -maxdepth 1 -name '*.tf' -print -quit)" ] || continue
             echo "::group::tflint $dir"
-            tflint --chdir="$dir" --format=compact || failed=1
+            tflint --chdir="$dir" --config="$config" --format=compact || failed=1
             echo "::endgroup::"
           done
           exit $failed

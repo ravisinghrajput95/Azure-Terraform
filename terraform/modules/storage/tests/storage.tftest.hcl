@@ -221,3 +221,31 @@ run "accepts_containers_with_keys_enabled_and_no_data_role" {
     error_message = "Enabling shared access keys must be reported as a warning."
   }
 }
+
+################################################################################
+# The endpoint name prefix is required once endpoints are switched on
+#
+# It defaults to null because it is meaningless without private endpoints. With
+# them enabled it names every one, and omitting it used to fail as "Invalid
+# template interpolation value" pointing at locals.tf — an error naming neither
+# the variable nor the caller that left it out.
+#
+# The local now coalesces to a placeholder so the expression stays evaluable,
+# which is what lets TFLint read this module at all: it evaluates untaken
+# branches with variable defaults, and a null in a template aborted the whole
+# azurerm ruleset for this directory rather than failing one rule. That makes
+# this precondition the only thing standing between a missing prefix and a set
+# of endpoints named "pep-unset-blob".
+################################################################################
+
+run "rejects_private_endpoints_with_no_name_prefix" {
+  command = plan
+
+  variables {
+    private_endpoint_name_prefix = null
+  }
+
+  expect_failures = [
+    azurerm_private_endpoint.this,
+  ]
+}

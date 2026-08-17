@@ -228,4 +228,15 @@ resource "azurerm_private_endpoint" "this" {
   }
 
   tags = var.tags
+
+  lifecycle {
+    # The prefix is optional until private endpoints are switched on, at which
+    # point it names every one of them. Without this the failure is an
+    # "Invalid template interpolation value" pointing at locals.tf, which names
+    # neither the variable nor the caller that omitted it.
+    precondition {
+      condition     = var.private_endpoint_name_prefix != null
+      error_message = "private_endpoint_name_prefix is required once create_private_endpoints is true — it names every endpoint created here."
+    }
+  }
 }

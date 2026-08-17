@@ -16,10 +16,25 @@ locals {
     if length(lookup(var.private_dns_zone_ids_by_subresource, sub, [])) == 0
   ])
 
+  # coalesce rather than the bare variable, and the reason is the linter rather
+  # than the deployment.
+  #
+  # private_endpoint_name_prefix defaults to null, and TFLint evaluates a module
+  # with its variable DEFAULTS — including this branch, which is not taken by
+  # default. A null inside a string template is an evaluation error, and it does
+  # not fail one rule: it aborts the entire azurerm ruleset for this directory
+  # with "Failed to check ruleset", so every SKU and name check in the module
+  # silently stops running.
+  #
+  # The fallback is never used at apply. The precondition on
+  # azurerm_private_endpoint rejects a null prefix first, and by name — which is
+  # a better error than the null-interpolation one this replaces.
+  private_endpoint_name_prefix = coalesce(var.private_endpoint_name_prefix, "pep-unset")
+
   private_endpoints = local.has_private_endpoints ? {
     for sub in var.private_endpoint_subresources : sub => {
       subresource = sub
-      name        = "${var.private_endpoint_name_prefix}-${sub}"
+      name        = "${local.private_endpoint_name_prefix}-${sub}"
       zone_ids    = lookup(var.private_dns_zone_ids_by_subresource, sub, [])
     }
   } : {}

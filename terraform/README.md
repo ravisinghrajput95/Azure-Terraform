@@ -141,6 +141,27 @@ terraform apply tfplan
 `backend.conf` and `terraform.tfvars` hold environment-specific values and
 credentials. Both are gitignored.
 
+### Local tooling
+
+`make check` runs what CI runs. Terraform is the only hard requirement; the
+rest are needed by individual targets, and `make lint` names this file when
+TFLint is missing:
+
+```bash
+brew install terraform-linters/tap/tflint   # NOT in homebrew-core
+brew install shellcheck terraform-docs
+```
+
+Pin TFLint to the version CI uses — `v0.64.0`, set in
+`.github/workflows/terraform-ci.yml`. Version parity matters more here than it
+looks: `make lint` and the CI job had silently diverged in how they invoked
+TFLint, and the job spent that time running without the azurerm ruleset
+entirely while reporting success.
+
+`terraform-docs` must be 0.20.0 exactly. The `docs` target warns when it is
+not, because table formatting differs between versions and the CI docs job
+fails on any diff.
+
 ---
 
 ## Subscription constraints encountered
