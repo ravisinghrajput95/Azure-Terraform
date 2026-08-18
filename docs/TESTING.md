@@ -80,7 +80,7 @@ checking that a test noticed.
 ### Modules: weaken the precondition
 
 Every precondition in the repository was weakened to an always-true expression
-in turn, with the suite re-run each time. **105 of 110 are confirmed that way.
+in turn, with the suite re-run each time. **106 of 111 are confirmed that way.
 The other 5 cannot fire at all**, and each is written up in its own test file:
 
 | Precondition | Why it can never fire |

@@ -136,7 +136,7 @@ each guard was broken in turn to check that something noticed:
 
 | Layer | Method | Result |
 |---|---|---|
-| 22 modules | Weaken each precondition to an always-true expression | **105 of 110** confirmed. The other 5 cannot fire at all, each written up in its own test file |
+| 22 modules | Weaken each precondition to an always-true expression | **106 of 111** confirmed. The other 5 cannot fire at all, each written up in its own test file |
 | 4 environments, bootstrap | Break the configuration — a composition root has no preconditions of its own | **84 mutations: 72** caught by the run block that claims to guard them, **12** caught first by a child module's precondition, **none unguarded** |
 
 That second row is the distinction worth drawing. A mutation that merely turns

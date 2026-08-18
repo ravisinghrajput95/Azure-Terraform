@@ -3,10 +3,10 @@
 
 The 22 module suites were measured rather than asserted: every precondition was
 weakened to an always-true expression in turn and the suite re-run, to check
-that something actually fails when the guard stops guarding. 105 of 110 are
+that something actually fails when the guard stops guarding. 106 of 111 are
 confirmed that way, and the five that cannot fire are written up individually.
 
-The 71 environment and bootstrap assertions never got that treatment. They were
+The environment and bootstrap suites never got that treatment. They were
 spot-checked while being written, which proves an assertion CAN fail, not that
 it fails for the reason it claims. That gap matters more here than anywhere
 else in the repository: qa, stage and prod cannot be applied on this
