@@ -11,7 +11,7 @@ Three of them reached Azure rather than staying in a comment. A rule
 `description` is a real attribute of `azurerm_network_security_rule`, so
 prod's NSG would have documented itself as qa's ingress path in the portal.
 
-What this cannot do is judge whether prose is true. It checks three mechanical
+What this cannot do is judge whether prose is true. It checks four mechanical
 properties instead:
 
   1. No description names a DIFFERENT environment without naming its own.
@@ -26,6 +26,14 @@ properties instead:
 
   3. The environments declare the same variables, except where the difference
      is recorded below.
+
+  4. The mock scaffolding in the environment TEST files is well-formed and
+     consistent. Every mock id has to be a valid ARM resource ID, and the four
+     environments have to mock the same resource types — mock_resource defaults
+     are per type, so one forgotten in a single environment leaves that one
+     receiving random strings where the provider needs a parseable ID. Both
+     failures currently surface as "the number of segments didn't match"
+     against whichever resource consumed the value, which names nothing useful.
 
 Exit status is 0 when clean, 1 when anything is found. No Azure access, no
 Terraform invocation: it reads the .tf files.

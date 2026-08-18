@@ -542,7 +542,11 @@ MUTATIONS = [
         "Default-To-Firewall" = {
           address_prefix         = "0.0.0.0/0"
           next_hop_type          = "VirtualAppliance"
-          next_hop_in_ip_address = "10.40.0.4"
+          # qa's own range. It said 10.40.0.4 — stage's — until the
+          # route-table module gained its containment check and refused the
+          # plan before qa's assertion could be reached. The mutation has to
+          # break exactly one thing to measure exactly one claim.
+          next_hop_in_ip_address = "10.20.0.4"
         }
       }""",
             )

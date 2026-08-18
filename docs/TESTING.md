@@ -104,10 +104,10 @@ mention its own variable. Weakening has to keep a reference that cannot fail:
 
 A composition root declares no resources, so it has no preconditions of its own
 to weaken. [`scripts/mutation-test.py`](../scripts/mutation-test.py) breaks the
-**configuration** instead — 81 mutations, each naming the `run` block that
+**configuration** instead — 84 mutations, each naming the `run` block that
 claims to guard it.
 
-**70 are caught by that run block. The other 11 are caught first by a
+**72 are caught by that run block. The other 12 are caught first by a
 precondition inside a child module.** The second group is a real result rather
 than a pass: the property holds, but the environment assertion is not what holds
 it, which is worth knowing about an assertion whose error message says
@@ -118,7 +118,7 @@ Two limits shape what a mutation can measure here, and both push the same way:
 - **`terraform test` halts a file at the first run that *errors***, as opposed
   to one that merely fails an assertion. Any mutation that invalidates the plan
   is therefore attributed to the first run block and no later one executes. That
-  is why the eleven above land where they do.
+  is why the twelve above land where they do.
 - **`expect_failures` only accepts checkable objects in the root module under
   test**, so a failure raised inside a child module cannot be named from an
   environment test at all.
@@ -152,6 +152,6 @@ Stated rather than left to be discovered.
 | Gap | Status |
 |---|---|
 | Nothing is validated against real Azure | `dev` was, and was destroyed on 2026-08-14. `qa`, `stage` and `prod` have never been applied and cannot be on this subscription |
-| A UDR next hop outside its own VNet is not refused | Azure accepts one by design. Closing it needs a precondition in the `route-table` module with the VNet address space passed in |
+| A UDR next hop outside its own VNet | **Closed.** The `route-table` module now checks every VirtualAppliance next hop against the VNet address space each environment passes it, and reports `next_hop_containment_checked` so a skipped check cannot read as a passed one |
 | Output assertion coverage is roughly 43% | The remainder are pass-throughs where an assertion would test the provider rather than this repository |
-| The mock ID scaffolding encodes provider ID parsing | A provider upgrade could break it, and the failure would look like a test failure rather than an upgrade problem |
+| The mock ID scaffolding encodes provider ID parsing | A provider upgrade could still break it. Partly mitigated: the conformance checker verifies every mock id is a well-formed ARM ID and that the four environments mock the same resource types, so the common failures name the file and line instead of surfacing as "the number of segments didn't match" |

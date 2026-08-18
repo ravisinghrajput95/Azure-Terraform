@@ -130,13 +130,14 @@ Three of those defects had reached a `description`, which is a real attribute
 on `azurerm_network_security_rule`, not a comment: prod's NSG would have
 documented itself in the Azure portal as qa's ingress path.
 
-It checks three mechanical properties, and deliberately not a fourth:
+It checks four mechanical properties, and deliberately not a fifth:
 
 | Check | Catches |
 |---|---|
 | No `description` names a different environment without naming its own | "Empty in dev by design" sitting in `prod/outputs.tf` |
 | Variables that must share a default do | `dev` said `location = "eastus"` while its three siblings said `centralus` — and dev is the only environment ever deployed |
 | The environments declare the same variable set | A variable added to one and forgotten in the others |
+| The test files' mock scaffolding is well-formed and consistent | A mock id that is not a valid ARM resource ID, or a resource type mocked in three environments and forgotten in the fourth |
 
 It does **not** judge whether prose is true; nothing mechanical can. A
 deliberate contrast — "which is dev's and qa's posture" — is allowed by putting
@@ -148,6 +149,21 @@ Both quoted and heredoc descriptions are read. That is not incidental: the
 `subscription_vcpu_quota` descriptions that claimed qa's vCPU figure inside
 `stage` and `prod` were heredocs, so a check reading only quoted strings would
 have missed the defect that motivated writing this.
+
+The mock-scaffolding check exists because that scaffolding is the least durable
+thing in the test suites and its failure is the least legible. The azurerm
+provider parses resource IDs client-side, before any API call, so a malformed
+mock fails with "the number of segments didn't match" — naming neither the
+file, nor the resource type, nor the mock, and reading as a bug in the
+configuration under test. `mock_resource` defaults are per TYPE, so a type
+mocked in three environments and forgotten in the fourth leaves that one
+receiving Terraform's random 8-character strings, which is exactly the input
+the provider cannot parse. Both are now a one-second failure naming the file
+and line.
+
+What it cannot do is predict the provider's parser. A provider upgrade that
+tightens what it accepts may still break these mocks — but the failure now has
+somewhere to point.
 
 ---
 
@@ -183,10 +199,11 @@ What makes it a measurement rather than a smoke test is the third outcome:
 | `guarded-elsewhere` | Something else failed first, unexpectedly. The named claim is still untested |
 | `UNGUARDED` | The suite passed with the configuration broken |
 
-**81 mutations: 70 `guarded`, 11 `guarded-by-module`, none unguarded.** The
+**84 mutations: 72 `guarded`, 12 `guarded-by-module`, none unguarded.** The
 first pass was 62, 1 unguarded and 16 unaccounted for; the difference is three
-fixed defects, four mutations that were themselves wrong, and eleven now
-declared as module-guarded with the reason recorded next to each.
+fixed defects, four mutations that were themselves wrong, twelve now declared
+as module-guarded with the reason recorded next to each, and three added for
+the next-hop containment check.
 
 A mutation that merely turns the suite red proves nothing. It may have broken
 the plan outright, or tripped a precondition inside a child module, or been
@@ -238,7 +255,7 @@ state.
 
 ### It is not part of `make check`
 
-A full campaign is 81 suite runs, around twenty minutes wall-clock with the
+A full campaign is 84 suite runs, around twenty minutes wall-clock with the
 targets in parallel. What *is* in `make check`, through `make test-sh`, is
 `--check-catalogue`: it verifies every mutation still names a run block that
 exists. A renamed run block would otherwise make its mutation permanently
